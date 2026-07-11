@@ -11,15 +11,12 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
@@ -40,30 +37,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.dobedub.kiosk.ui.theme.BackgroundNormal
 import com.dobedub.kiosk.ui.theme.LabelSecondary
 import com.dobedub.kiosk.ui.theme.LineNeutral
 import kotlinx.coroutines.delay
-
-/**
- * 보이스툰 뷰어는 460px를 오디오-이미지 스크롤 동기화 공식의 기준 해상도로 하드코딩해두고 있어
- * (사이트 번들 확인: `getPositionAtTimeV1(...)`가 리터럴 `460`을 기준값으로 받아 위치를 계산한다),
- * 웹뷰 DOM 안에서 CSS width나 transform으로 시각적으로 460px보다 넓게 늘리면 반드시 동기화가 깨진다
- * (실측: width 확대 → 스크롤 부족, transform 확대 → CSS Overflow 스펙상 transform도 스크롤 컨테이너의
- * scrollHeight에 반영되어 오히려 더 크게 어긋남).
- *
- * 대신 실제 모바일폰에서는 화면 폭 자체가 460보다 좁아 이 제한에 걸리지 않고 꽉 차게 나오는 점에 착안해,
- * 웹뷰를 [MOBILE_VIEWPORT_WIDTH_DP]폭짜리 화면인 것처럼 실제로 그 크기로만 렌더링하고(→ 사이트가 진짜
- * 그 폭의 폰으로 인식해 내부 상태(calculatedWidth/image_scale)와 스크롤 동기화가 항상 일관됨), 렌더링된
- * 웹뷰 전체를 Compose `graphicsLayer`로 태블릿 화면 크기에 맞춰 확대한다. 이 확대는 DOM 밖(안드로이드
- * 뷰 합성 단계)에서 일어나므로 웹뷰 내부의 window.innerWidth/scrollTop/scrollHeight는 전혀 영향받지
- * 않는다 — 실제 폰에서 보는 것과 동일한 계산 결과를 얻으면서 화면은 꽉 차 보인다.
- */
-private const val MOBILE_VIEWPORT_WIDTH_DP = 412
 
 /**
  * 화이트리스트 도메인 밖으로 나갈 수 없는 제한 브라우저.
@@ -129,10 +108,7 @@ fun RestrictedWebViewScreen(
         }
         androidx.compose.material3.HorizontalDivider(color = LineNeutral)
 
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val scale = maxWidth.value / MOBILE_VIEWPORT_WIDTH_DP.toFloat()
-            val webViewHeightDp = (maxHeight.value / scale).dp
-
+        Box(modifier = Modifier.fillMaxSize()) {
             AndroidView(
                 factory = { ctx ->
                     WebView(ctx).apply {
@@ -142,6 +118,8 @@ fun RestrictedWebViewScreen(
                         )
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
+                        settings.useWideViewPort = true
+                        settings.loadWithOverviewMode = true
                         settings.setSupportMultipleWindows(false)
                         settings.javaScriptCanOpenWindowsAutomatically = false
                         settings.setSupportZoom(false)
@@ -211,15 +189,7 @@ fun RestrictedWebViewScreen(
                     }
                 },
                 update = { },
-                modifier = Modifier
-                    .width(MOBILE_VIEWPORT_WIDTH_DP.dp)
-                    .height(webViewHeightDp)
-                    .graphicsLayer(
-                        scaleX = scale,
-                        scaleY = scale,
-                        transformOrigin = TransformOrigin(0f, 0f)
-                    )
-                    .align(Alignment.TopStart)
+                modifier = Modifier.fillMaxSize()
             )
 
             if (loadError != null) {
