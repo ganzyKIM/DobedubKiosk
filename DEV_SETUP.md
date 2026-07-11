@@ -76,7 +76,39 @@ sdk.dir=C\:\\Android\\Sdk
   adb push "<영상.mp4>" "/sdcard/Android/data/com.dobedub.kiosk/files/videos/<영상.mp4>"
   ```
 
-## 6. git 관리 밖에 있는 것들 (별도로 옮겨야 함)
+## 6. 원격 저장소 / 다른 PC에서 이어 작업하기
+
+- 원격: **GitHub private repo** `https://github.com/ganzyKIM/DobedubKiosk` (기본 브랜치 `master`)
+- 집 PC에서 처음 받을 때:
+
+  ```bash
+  gh auth login            # 또는 git 자격증명으로 clone
+  git clone https://github.com/ganzyKIM/DobedubKiosk.git
+  # 이후 §1~3(도구/환경변수/local.properties) 세팅
+  ```
+
+- 작업 흐름:
+
+  ```bash
+  git pull        # 작업 시작 전 최신 받기
+  # ... 작업 ...
+  git add -A && git commit -m "..." && git push
+  ```
+
+- **회사 PC git SSL 문제**: 회사망 보안 SSL 검사 때문에 git push/clone이
+  `SSL certificate problem: unable to get local issuer certificate`로 실패한다.
+  Git이 Windows 인증서 저장소를 쓰게 하면 해결(회사 PC에서 1회 설정):
+
+  ```bash
+  git config --global http.sslBackend schannel
+  ```
+
+  집 PC(일반 네트워크)에서는 불필요.
+
+- **월요일 회사 복귀 시**: 회사 PC에서 `git pull` 먼저. (이 회사 PC엔 이미 origin이
+  연결돼 있고 schannel 설정도 돼 있음.) 집에서 push한 커밋을 받아 이어서 작업.
+
+## 7. git 관리 밖에 있는 것들 (별도로 옮겨야 함)
 
 - 샘플 동영상(약 2.4GB, `../[두비덥 보이스툰] ...` 폴더) — 용량 때문에 git 제외.
   코드만 개발할 땐 없어도 됨(동영상 목록이 비어 보일 뿐). 실제 재생 테스트 시 필요.
