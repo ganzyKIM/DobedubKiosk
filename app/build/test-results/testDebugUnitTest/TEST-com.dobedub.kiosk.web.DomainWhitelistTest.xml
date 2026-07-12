@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.dobedub.kiosk.web.DomainWhitelistTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-07-10T08:49:09" hostname="두비덥" time="0.011">
+  <properties/>
+  <testcase name="exact allowed host is permitted" classname="com.dobedub.kiosk.web.DomainWhitelistTest" time="0.01"/>
+  <testcase name="subdomain of allowed host is permitted" classname="com.dobedub.kiosk.web.DomainWhitelistTest" time="0.0"/>
+  <testcase name="unrelated host is blocked" classname="com.dobedub.kiosk.web.DomainWhitelistTest" time="0.001"/>
+  <testcase name="www prefix on allowed domain still matches" classname="com.dobedub.kiosk.web.DomainWhitelistTest" time="0.0"/>
+  <testcase name="malformed url is blocked" classname="com.dobedub.kiosk.web.DomainWhitelistTest" time="0.0"/>
+  <testcase name="non-http scheme like tel or intent is blocked" classname="com.dobedub.kiosk.web.DomainWhitelistTest" time="0.0"/>
+  <testcase name="host that merely contains the allowed domain as a suffix trick is blocked" classname="com.dobedub.kiosk.web.DomainWhitelistTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

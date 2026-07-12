@@ -1,0 +1,171 @@
+package com.dobedub.kiosk
+
+import android.media.AudioManager
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.view.KeyEvent
+import android.view.MotionEvent
+import android.view.WindowManager
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.rememberNavController
+import com.dobedub.kiosk.nav.KioskNavHost
+import com.dobedub.kiosk.nav.Routes
+import com.dobedub.kiosk.ui.components.StatusOverlay
+import com.dobedub.kiosk.ui.theme.DobedubKioskTheme
+import com.dobedub.kiosk.web.clearWebSession
+import kotlinx.coroutines.launch
+
+private const val DEFAULT_IDLE_TIMEOUT_MINUTES = 5
+private const val DEFAULT_VOLUME_MAX_PERCENT = 100
+
+class MainActivity : ComponentActivity() {
+
+    private val app get() = application as KioskApplication
+    private val audioManager get() = getSystemService(AUDIO_SERVICE) as AudioManager
+
+    private var navController: NavHostController? = null
+    private val idleHandler = Handler(Looper.getMainLooper())
+    @Volatile private var idleTimeoutMillis = DEFAULT_IDLE_TIMEOUT_MINUTES * 60_000L
+    @Volatile private var volumeMaxPercent = DEFAULT_VOLUME_MAX_PERCENT
+    @Volatile private var kioskLockEnabled = true
+    private val idleRunnable = Runnable { returnToHomeIfIdle() }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        hideSystemBars()
+
+        setContent {
+            DobedubKioskTheme {
+                val navController = rememberNavController()
+                this.navController = navController
+
+                val settings by app.settingsRepository.settingsFlow.collectAsState(
+                    initial = com.dobedub.kiosk.data.KioskSettings()
+                )
+                idleTimeoutMillis = settings.idleTimeoutMinutes * 60_000L
+                volumeMaxPercent = settings.volumeMax
+                kioskLockEnabled = settings.kioskLockEnabled
+
+                LaunchedEffect(settings.brightness) {
+                    val attributes = window.attributes
+                    attributes.screenBrightness = settings.brightness.coerceIn(10, 100) / 100f
+                    window.attributes = attributes
+                }
+
+                LaunchedEffect(settings.volumeMax) {
+                    clampVolumeToMax()
+                }
+
+                Box(modifier = Modifier.fillMaxSize()) {
+                    KioskNavHost(
+                        navController = navController,
+                        settingsRepository = app.settingsRepository,
+                        onUserInteraction = ::resetIdleTimer,
+                        onExitKiosk = {
+                            app.kioskManager.exitKioskMode(this@MainActivity)
+                            kioskLockEnabled = false
+                            lifecycleScope.launch { app.settingsRepository.setKioskLockEnabled(false) }
+                        },
+                        onReenterKiosk = {
+                            kioskLockEnabled = true
+                            app.kioskManager.enterKioskMode(this@MainActivity)
+                            lifecycleScope.launch { app.settingsRepository.setKioskLockEnabled(true) }
+                        },
+                        onReboot = { app.kioskManager.rebootDevice() },
+                        onReleaseDeviceOwner = { app.kioskManager.clearDeviceOwner(this@MainActivity) }
+                    )
+
+                    StatusOverlay(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 8.dp, end = 8.dp)
+                    )
+                }
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (kioskLockEnabled) {
+            app.kioskManager.enterKioskMode(this)
+        }
+        resetIdleTimer()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        idleHandler.removeCallbacks(idleRunnable)
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        resetIdleTimer()
+        return super.dispatchTouchEvent(ev)
+    }
+
+    /** 관리자 설정의 최대 볼륨(%)을 넘지 못하도록 볼륨 버튼을 직접 가로챈다. */
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            resetIdleTimer()
+            val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            val cap = (volumeMaxPercent.coerceIn(0, 100) / 100f * maxVolume).toInt()
+            val current = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+            val delta = if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) 1 else -1
+            val target = (current + delta).coerceIn(0, cap)
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, target, AudioManager.FLAG_SHOW_UI)
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    private fun clampVolumeToMax() {
+        val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        val cap = (volumeMaxPercent.coerceIn(0, 100) / 100f * maxVolume).toInt()
+        val current = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        if (current > cap) {
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, cap, 0)
+        }
+    }
+
+    private fun resetIdleTimer() {
+        idleHandler.removeCallbacks(idleRunnable)
+        idleHandler.postDelayed(idleRunnable, idleTimeoutMillis)
+    }
+
+    private fun returnToHomeIfIdle() {
+        val nav = navController ?: return
+        if (nav.currentDestination?.route != Routes.HOME) {
+            clearWebSession()
+            nav.navigate(Routes.HOME) {
+                popUpTo(Routes.HOME) { inclusive = true }
+            }
+        }
+        resetIdleTimer()
+    }
+
+    private fun hideSystemBars() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        controller.hide(WindowInsetsCompat.Type.systemBars())
+        controller.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+    }
+}

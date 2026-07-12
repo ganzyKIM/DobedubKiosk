@@ -1,0 +1,216 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.dobedub.kiosk"
+4    android:versionCode="1"
+5    android:versionName="1.0" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="29"
+9        android:targetSdkVersion="34" />
+10
+11    <uses-permission android:name="android.permission.INTERNET" />
+11-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:4:5-67
+11-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:4:22-64
+12    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+12-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:5:5-81
+12-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:5:22-78
+13    <uses-permission android:name="android.permission.REORDER_TASKS" />
+13-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:6:5-72
+13-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:6:22-69
+14    <uses-permission android:name="android.permission.WAKE_LOCK" />
+14-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:7:5-68
+14-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:7:22-65
+15    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+15-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:8:5-76
+15-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:8:22-73
+16    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+16-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:9:5-76
+16-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:9:22-73
+17    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+17-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:10:5-79
+17-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:10:22-76
+18    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+18-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:11:5-71
+18-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:11:22-68
+19    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+19-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:12:5-80
+19-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:12:22-77
+20
+21    <permission
+21-->[androidx.core:core:1.13.1] C:\Users\kimdh\.gradle\caches\transforms-4\f74ae819eaa93f1d528427f5d683a3a8\transformed\core-1.13.1\AndroidManifest.xml:22:5-24:47
+22        android:name="com.dobedub.kiosk.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+22-->[androidx.core:core:1.13.1] C:\Users\kimdh\.gradle\caches\transforms-4\f74ae819eaa93f1d528427f5d683a3a8\transformed\core-1.13.1\AndroidManifest.xml:23:9-81
+23        android:protectionLevel="signature" />
+23-->[androidx.core:core:1.13.1] C:\Users\kimdh\.gradle\caches\transforms-4\f74ae819eaa93f1d528427f5d683a3a8\transformed\core-1.13.1\AndroidManifest.xml:24:9-44
+24
+25    <uses-permission android:name="com.dobedub.kiosk.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+25-->[androidx.core:core:1.13.1] C:\Users\kimdh\.gradle\caches\transforms-4\f74ae819eaa93f1d528427f5d683a3a8\transformed\core-1.13.1\AndroidManifest.xml:26:5-97
+25-->[androidx.core:core:1.13.1] C:\Users\kimdh\.gradle\caches\transforms-4\f74ae819eaa93f1d528427f5d683a3a8\transformed\core-1.13.1\AndroidManifest.xml:26:22-94
+26
+27    <application
+27-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:14:5-60:19
+28        android:name="com.dobedub.kiosk.KioskApplication"
+28-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:15:9-41
+29        android:allowBackup="false"
+29-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:16:9-36
+30        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+30-->[androidx.core:core:1.13.1] C:\Users\kimdh\.gradle\caches\transforms-4\f74ae819eaa93f1d528427f5d683a3a8\transformed\core-1.13.1\AndroidManifest.xml:28:18-86
+31        android:debuggable="true"
+32        android:extractNativeLibs="false"
+33        android:icon="@mipmap/ic_launcher"
+33-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:17:9-43
+34        android:label="@string/app_name"
+34-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:18:9-41
+35        android:networkSecurityConfig="@xml/network_security_config"
+35-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:23:9-69
+36        android:roundIcon="@mipmap/ic_launcher"
+36-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:19:9-48
+37        android:supportsRtl="false"
+37-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:20:9-36
+38        android:theme="@style/Theme.DobedubKiosk"
+38-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:21:9-50
+39        android:usesCleartextTraffic="false" >
+39-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:22:9-45
+40        <activity
+40-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:25:9-38:20
+41            android:name="com.dobedub.kiosk.MainActivity"
+41-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:26:13-41
+42            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout"
+42-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:30:13-87
+43            android:exported="true"
+43-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:27:13-36
+44            android:launchMode="singleTask"
+44-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:28:13-44
+45            android:screenOrientation="portrait"
+45-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:29:13-49
+46            android:theme="@style/Theme.DobedubKiosk" >
+46-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:31:13-54
+47            <intent-filter>
+47-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:32:13-37:29
+48                <action android:name="android.intent.action.MAIN" />
+48-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:33:17-69
+48-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:33:25-66
+49
+50                <category android:name="android.intent.category.LAUNCHER" />
+50-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:34:17-77
+50-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:34:27-74
+51                <category android:name="android.intent.category.HOME" />
+51-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:35:17-73
+51-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:35:27-70
+52                <category android:name="android.intent.category.DEFAULT" />
+52-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:36:17-76
+52-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:36:27-73
+53            </intent-filter>
+54        </activity>
+55
+56        <receiver
+56-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:40:9-50:20
+57            android:name="com.dobedub.kiosk.kiosk.AdminReceiver"
+57-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:41:13-48
+58            android:exported="true"
+58-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:42:13-36
+59            android:permission="android.permission.BIND_DEVICE_ADMIN" >
+59-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:43:13-70
+60            <meta-data
+60-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:44:13-46:56
+61                android:name="android.app.device_admin"
+61-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:45:17-56
+62                android:resource="@xml/device_admin" />
+62-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:46:17-53
+63
+64            <intent-filter>
+64-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:47:13-49:29
+65                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+65-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:48:17-82
+65-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:48:25-79
+66            </intent-filter>
+67        </receiver>
+68        <receiver
+68-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:52:9-58:20
+69            android:name="com.dobedub.kiosk.kiosk.BootReceiver"
+69-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:53:13-47
+70            android:exported="true" >
+70-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:54:13-36
+71            <intent-filter>
+71-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:55:13-57:29
+72                <action android:name="android.intent.action.BOOT_COMPLETED" />
+72-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:56:17-79
+72-->C:\Users\kimdh\Desktop\tablet_kiosk\DobedubKiosk\app\src\main\AndroidManifest.xml:56:25-76
+73            </intent-filter>
+74        </receiver>
+75
+76        <provider
+76-->[androidx.emoji2:emoji2:1.3.0] C:\Users\kimdh\.gradle\caches\transforms-4\6fd08c0c456426fe8f0604c2850e0e94\transformed\emoji2-1.3.0\AndroidManifest.xml:24:9-32:20
+77            android:name="androidx.startup.InitializationProvider"
+77-->[androidx.emoji2:emoji2:1.3.0] C:\Users\kimdh\.gradle\caches\transforms-4\6fd08c0c456426fe8f0604c2850e0e94\transformed\emoji2-1.3.0\AndroidManifest.xml:25:13-67
+78            android:authorities="com.dobedub.kiosk.androidx-startup"
+78-->[androidx.emoji2:emoji2:1.3.0] C:\Users\kimdh\.gradle\caches\transforms-4\6fd08c0c456426fe8f0604c2850e0e94\transformed\emoji2-1.3.0\AndroidManifest.xml:26:13-68
+79            android:exported="false" >
+79-->[androidx.emoji2:emoji2:1.3.0] C:\Users\kimdh\.gradle\caches\transforms-4\6fd08c0c456426fe8f0604c2850e0e94\transformed\emoji2-1.3.0\AndroidManifest.xml:27:13-37
+80            <meta-data
+80-->[androidx.emoji2:emoji2:1.3.0] C:\Users\kimdh\.gradle\caches\transforms-4\6fd08c0c456426fe8f0604c2850e0e94\transformed\emoji2-1.3.0\AndroidManifest.xml:29:13-31:52
+81                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+81-->[androidx.emoji2:emoji2:1.3.0] C:\Users\kimdh\.gradle\caches\transforms-4\6fd08c0c456426fe8f0604c2850e0e94\transformed\emoji2-1.3.0\AndroidManifest.xml:30:17-75
+82                android:value="androidx.startup" />
+82-->[androidx.emoji2:emoji2:1.3.0] C:\Users\kimdh\.gradle\caches\transforms-4\6fd08c0c456426fe8f0604c2850e0e94\transformed\emoji2-1.3.0\AndroidManifest.xml:31:17-49
+83            <meta-data
+83-->[androidx.lifecycle:lifecycle-process:2.8.4] C:\Users\kimdh\.gradle\caches\transforms-4\4f1211dbe1dfb7bd8f4fb81c2f97e4bd\transformed\lifecycle-process-2.8.4\AndroidManifest.xml:29:13-31:52
+84                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+84-->[androidx.lifecycle:lifecycle-process:2.8.4] C:\Users\kimdh\.gradle\caches\transforms-4\4f1211dbe1dfb7bd8f4fb81c2f97e4bd\transformed\lifecycle-process-2.8.4\AndroidManifest.xml:30:17-78
+85                android:value="androidx.startup" />
+85-->[androidx.lifecycle:lifecycle-process:2.8.4] C:\Users\kimdh\.gradle\caches\transforms-4\4f1211dbe1dfb7bd8f4fb81c2f97e4bd\transformed\lifecycle-process-2.8.4\AndroidManifest.xml:31:17-49
+86            <meta-data
+86-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\kimdh\.gradle\caches\transforms-4\71d01de3584de4223a28e6a8fc12f139\transformed\profileinstaller-1.3.1\AndroidManifest.xml:29:13-31:52
+87                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+87-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\kimdh\.gradle\caches\transforms-4\71d01de3584de4223a28e6a8fc12f139\transformed\profileinstaller-1.3.1\AndroidManifest.xml:30:17-85
+88                android:value="androidx.startup" />
+88-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\kimdh\.gradle\caches\transforms-4\71d01de3584de4223a28e6a8fc12f139\transformed\profileinstaller-1.3.1\AndroidManifest.xml:31:17-49
+89        </provider>
+90
+91        <activity
+91-->[androidx.compose.ui:ui-tooling-android:1.6.8] C:\Users\kimdh\.gradle\caches\transforms-4\d585a81cedabf08295ca862c202834af\transformed\ui-tooling-release\AndroidManifest.xml:23:9-25:39
+92            android:name="androidx.compose.ui.tooling.PreviewActivity"
+92-->[androidx.compose.ui:ui-tooling-android:1.6.8] C:\Users\kimdh\.gradle\caches\transforms-4\d585a81cedabf08295ca862c202834af\transformed\ui-tooling-release\AndroidManifest.xml:24:13-71
+93            android:exported="true" />
+93-->[androidx.compose.ui:ui-tooling-android:1.6.8] C:\Users\kimdh\.gradle\caches\transforms-4\d585a81cedabf08295ca862c202834af\transformed\ui-tooling-release\AndroidManifest.xml:25:13-36
+94
+95        <receiver
+95-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\kimdh\.gradle\caches\transforms-4\71d01de3584de4223a28e6a8fc12f139\transformed\profileinstaller-1.3.1\AndroidManifest.xml:34:9-52:20
+96            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+96-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\kimdh\.gradle\caches\transforms-4\71d01de3584de4223a28e6a8fc12f139\transformed\profileinstaller-1.3.1\AndroidManifest.xml:35:13-76
+97            android:directBootAware="false"
+97-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\kimdh\.gradle\caches\transforms-4\71d01de3584de4223a28e6a8fc12f139\transformed\profileinstaller-1.3.1\AndroidManifest.xml:36:13-44
+98            android:enabled="true"
+98-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\kimdh\.gradle\caches\transforms-4\71d01de3584de4223a28e6a8fc12f139\transformed\profileinstaller-1.3.1\AndroidManifest.xml:37:13-35
+99            android:exported="true"
+99-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\kimdh\.gradle\caches\transforms-4\71d01de3584de4223a28e6a8fc12f139\transformed\profileinstaller-1.3.1\AndroidManifest.xml:38:13-36
+100            android:permission="android.permission.DUMP" >
+100-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\kimdh\.gradle\caches\transforms-4\71d01de3584de4223a28e6a8fc12f139\transformed\profileinstaller-1.3.1\AndroidManifest.xml:39:13-57
+101            <intent-filter>
+101-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\kimdh\.gradle\caches\transforms-4\71d01de3584de4223a28e6a8fc12f139\transformed\profileinstaller-1.3.1\AndroidManifest.xml:40:13-42:29
+102                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+102-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\kimdh\.gradle\caches\transforms-4\71d01de3584de4223a28e6a8fc12f139\transformed\profileinstaller-1.3.1\AndroidManifest.xml:41:17-91
+102-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\kimdh\.gradle\caches\transforms-4\71d01de3584de4223a28e6a8fc12f139\transformed\profileinstaller-1.3.1\AndroidManifest.xml:41:25-88
+103            </intent-filter>
+104            <intent-filter>
+104-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\kimdh\.gradle\caches\transforms-4\71d01de3584de4223a28e6a8fc12f139\transformed\profileinstaller-1.3.1\AndroidManifest.xml:43:13-45:29
+105                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+105-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\kimdh\.gradle\caches\transforms-4\71d01de3584de4223a28e6a8fc12f139\transformed\profileinstaller-1.3.1\AndroidManifest.xml:44:17-85
+105-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\kimdh\.gradle\caches\transforms-4\71d01de3584de4223a28e6a8fc12f139\transformed\profileinstaller-1.3.1\AndroidManifest.xml:44:25-82
+106            </intent-filter>
+107            <intent-filter>
+107-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\kimdh\.gradle\caches\transforms-4\71d01de3584de4223a28e6a8fc12f139\transformed\profileinstaller-1.3.1\AndroidManifest.xml:46:13-48:29
+108                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+108-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\kimdh\.gradle\caches\transforms-4\71d01de3584de4223a28e6a8fc12f139\transformed\profileinstaller-1.3.1\AndroidManifest.xml:47:17-88
+108-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\kimdh\.gradle\caches\transforms-4\71d01de3584de4223a28e6a8fc12f139\transformed\profileinstaller-1.3.1\AndroidManifest.xml:47:25-85
+109            </intent-filter>
+110            <intent-filter>
+110-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\kimdh\.gradle\caches\transforms-4\71d01de3584de4223a28e6a8fc12f139\transformed\profileinstaller-1.3.1\AndroidManifest.xml:49:13-51:29
+111                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+111-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\kimdh\.gradle\caches\transforms-4\71d01de3584de4223a28e6a8fc12f139\transformed\profileinstaller-1.3.1\AndroidManifest.xml:50:17-95
+111-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\kimdh\.gradle\caches\transforms-4\71d01de3584de4223a28e6a8fc12f139\transformed\profileinstaller-1.3.1\AndroidManifest.xml:50:25-92
+112            </intent-filter>
+113        </receiver>
+114    </application>
+115
+116</manifest>

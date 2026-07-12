@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.dobedub.kiosk.admin.PinHasherTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-07-10T08:49:09" hostname="두비덥" time="0.252">
+  <properties/>
+  <testcase name="different salts produce different hashes for the same pin" classname="com.dobedub.kiosk.admin.PinHasherTest" time="0.078"/>
+  <testcase name="same pin and salt produce identical hash" classname="com.dobedub.kiosk.admin.PinHasherTest" time="0.058"/>
+  <testcase name="verify fails for an incorrect pin" classname="com.dobedub.kiosk.admin.PinHasherTest" time="0.04"/>
+  <testcase name="verify fails when salt does not match" classname="com.dobedub.kiosk.admin.PinHasherTest" time="0.037"/>
+  <testcase name="verify succeeds for the correct pin" classname="com.dobedub.kiosk.admin.PinHasherTest" time="0.037"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
