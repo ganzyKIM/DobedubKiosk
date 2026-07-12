@@ -76,26 +76,57 @@ private const val DESKTOP_USER_AGENT =
  * 클래스 셀렉터 기반이라 리더가 아닌 페이지(홈/목록)에선 매칭되는 요소가 없어 무효과다. SPA
  * 라우팅으로 head가 유지되므로 한 번 주입한 <style>이 리더 진입 시 자동 적용되고, 혹시 사라지면
  * setInterval로 다시 채운다.
+ *
+ * **오디오-스크롤 싱크 보정(좌표 어댑터)**: 사이트는 스크롤 목표를 모바일 기준 폭(460px)
+ * 좌표계로 계산한다. 컬럼을 화면 폭(예: 800)으로 넓히면 콘텐츠 실제 높이는 S=화면폭/460 배
+ * 길어지는데 사이트는 여전히 460 기준 값으로 scrollTop을 쓰므로 스크롤이 S배 모자라게 움직인다
+ * (실기기 증상: 스크롤이 너무 적게 움직임). 그래서 `.toon-scroll-layer` 인스턴스의
+ * scrollTop(읽기/쓰기)·scrollHeight·clientHeight·scrollTo를 가로채 사이트에게는 ÷S 한 값(460
+ * 좌표계)을 보여주고, 사이트가 쓰는 값은 ×S 해서 실제 픽셀에 적용한다. 사이트는 폰에서처럼
+ * 460 세계에서 일관되게 계산하고, 실제 스크롤은 정확히 보정된다. 사용자 터치 스크롤도 같은
+ * 어댑터를 통해 읽히므로 일관성이 유지된다.
  */
 private const val TOON_FIT_JS = """
 (function(){
   if (window.__dobedubToonFit) return;
   window.__dobedubToonFit = true;
   var ID = '__dobedub_toon_fit';
+  var BASE = 460; // 사이트가 스크롤 계산에 쓰는 모바일 기준 폭
   var CSS =
     '[class*="viewer-layout"]{max-width:100vw !important;width:100vw !important;margin:0 !important;}' +
     '[class*="viewer-body"],[class*="viewer-body-player"],[class*="toon-view"],[class*="toon-content"],[class*="ToonBox_toonBox"],[class*="ToonBox_toonContent"],.toon-scroll-layer{width:100vw !important;max-width:100vw !important;left:0 !important;margin:0 !important;}' +
     '.toon-scroll-layer{justify-content:flex-start !important;align-items:flex-start !important;}' +
     '.toon-scroll-layer div{width:100vw !important;max-width:100vw !important;left:0 !important;margin:0 !important;transform:none !important;}' +
     '.toon-image{width:100vw !important;max-width:100vw !important;height:auto !important;margin:0 !important;left:0 !important;}';
+  function S(){ return (window.innerWidth || BASE) / BASE; }
   function ensure(){
     try {
       var st = document.getElementById(ID);
       if (!st) { st = document.createElement('style'); st.id = ID; (document.head || document.documentElement).appendChild(st); }
       if (st.textContent !== CSS) st.textContent = CSS;
+      // 스크롤 레이어 좌표 어댑터: 사이트가 보는 값은 460-좌표계, 실제 적용은 ×S.
+      var sl = document.querySelector('.toon-scroll-layer');
+      if (sl && !sl.__dobedubAdapter) {
+        var dTop = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
+        var dSH  = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollHeight');
+        var dCH  = Object.getOwnPropertyDescriptor(Element.prototype, 'clientHeight');
+        Object.defineProperty(sl, 'scrollTop', { configurable: true,
+          get: function(){ return dTop.get.call(this) / S(); },
+          set: function(v){ dTop.set.call(this, v * S()); } });
+        Object.defineProperty(sl, 'scrollHeight', { configurable: true,
+          get: function(){ return dSH.get.call(this) / S(); } });
+        Object.defineProperty(sl, 'clientHeight', { configurable: true,
+          get: function(){ return dCH.get.call(this) / S(); } });
+        var oTo = sl.scrollTo.bind(sl);
+        sl.scrollTo = function(a, b){
+          if (typeof a === 'object' && a) { var c = Object.assign({}, a); if (typeof c.top === 'number') c.top *= S(); return oTo(c); }
+          return oTo(a, (b || 0) * S());
+        };
+        sl.__dobedubAdapter = true;
+      }
     } catch (e) {}
   }
-  setInterval(ensure, 1000);
+  setInterval(ensure, 500);
   ensure();
 })();
 """
