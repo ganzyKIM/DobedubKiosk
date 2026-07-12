@@ -11,15 +11,12 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
@@ -40,8 +37,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.dobedub.kiosk.ui.theme.BackgroundNormal
@@ -50,21 +45,66 @@ import com.dobedub.kiosk.ui.theme.LineNeutral
 import kotlinx.coroutines.delay
 
 /**
- * 보이스툰 뷰어는 오디오-이미지 스크롤 동기화 공식의 기준 폭을 460px로 하드코딩해 두고 있다
- * (사이트 번들: 위치 계산이 리터럴 460을 기준값으로 받는다). 웹뷰의 실제 렌더링 폭이 460과
- * 다르면 그 비율만큼 스크롤 목표가 어긋나는데, 특히 460보다 넓게 그리면 스크롤이 아래로
- * 오버슈트해 "보여야 할 지점보다 훨씬 아래"가 표시된다(실측: 폭 412로 그려도 이 오차가 남았다).
- *
- * 그래서 웹뷰의 논리적 폭을 사이트 기준값과 **정확히 460dp**로 맞춰(→ window.innerWidth≈460,
- * image_scale=1, 스크롤 오차 0) 싱크를 정확히 일치시키고, 렌더링된 웹뷰 전체를 Compose
- * [graphicsLayer]로 화면 좌우 [SCREEN_FILL_RATIO]까지 확대해 가운데 정렬한다. 이 확대는 DOM
- * 밖(안드로이드 뷰 합성 단계)에서 일어나므로 웹뷰 내부의 innerWidth/scrollTop/scrollHeight에는
- * 전혀 영향을 주지 않는다 — 계산은 460 기준 그대로면서 화면만 넓게 채워진다.
+ * 사이트를 **데스크탑 버전**으로 받기 위한 데스크탑 Chrome User-Agent.
+ * 모바일 UA로 접속하면 사이트가 모바일 레이아웃(좁은 460 폭 리더)을 내려주는데, 그러면
+ * 태블릿 가로 화면에서 모바일처럼 보인다. 데스크탑 UA를 주면 넓은 화면용 데스크탑 리더가
+ * 적용되어 그림 영역이 화면을 채우고 오디오-스크롤 싱크도 데스크탑 폭 기준으로 동작한다.
  */
-private const val VOICETOON_REFERENCE_WIDTH_DP = 460
+private const val DESKTOP_USER_AGENT =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-/** 웹툰 뷰어가 채울 화면 좌우 비율(0.9 = 90%). 좌우에 각각 5% 여백. */
-private const val SCREEN_FILL_RATIO = 0.9f
+/**
+ * 웹툰 리더에서 **그림 영역만** 화면에 꽉 차게 확대하는 스크립트 (태블릿 실기기 CDP 실측으로 검증).
+ *
+ * 리더 구조: 그림은 `.toon-scroll-layer`(레이아웃 460px 컬럼, 화면 가운데, overflow 스크롤)
+ * 안에서 사이트가 오디오에 맞춰 scrollTop을 구동한다. 그 부모 `.toon-box`(ToonBox_toonBox)는
+ * 스크롤/클립을 하지 않는 래퍼다. 헤더(뒤로/제목)·푸터(재생하기/마이 보이스 등) UI는 이
+ * 래퍼 밖의 별도 요소다.
+ *
+ * 확대 대상 = **스크롤 레이어가 아니라 그 부모 `.toon-box`**. 스크롤 레이어(clip 요소)에 직접
+ * transform을 걸면 WebView 합성 단계에서 클립이 원래 460px 폭 그대로 적용돼 그림 좌우가 잘린다
+ * (실기기 실측 확인). 반면 스크롤 안 하는 부모를 확대하면, 스크롤 레이어는 460 폭으로 그림을
+ * 온전히 담은 뒤 그 결과 전체가 부모 transform으로 800까지 확대돼 **좌우가 잘리지 않는다**.
+ *
+ * 배율 S = 화면폭/컬럼폭. 스크롤 레이어의 논리 높이를 `화면높이/S`로 맞춰 "사이트가 보인다고
+ * 계산하는 영역"과 "확대되어 실제 보이는 영역"을 일치시킨다 → 현재 재생 컷이 아래로 잘려
+ * 안 보이는 일이 없다. 원점 50% 0: 윗변은 화면 위에 고정된 채 아래로만 늘어나고 좌우는 가운데
+ * 정렬로 채운다. scrollHeight(19277)·컬럼 레이아웃 폭(460)은 불변이라 오디오-스크롤 싱크 유지.
+ * CSS transform은 브라우저가 터치 좌표를 자동 보정하므로 확대 후에도 터치·스크롤이 정상 동작.
+ * 헤더/푸터는 래퍼 밖이라 크기가 변하지 않는다.
+ *
+ * SPA 라우팅으로 리더에 들어왔다 나갈 수 있어 setInterval로 감시하고, 리더가 아니면 스타일을
+ * 비워 원상복구한다.
+ */
+private const val TOON_FIT_JS = """
+(function(){
+  if (window.__dobedubToonFit) return;
+  window.__dobedubToonFit = true;
+  var ID = '__dobedub_toon_fit';
+  function apply(){
+    try {
+      var st = document.getElementById(ID);
+      var sl = document.querySelector('.toon-scroll-layer');
+      if (!sl) { if (st) st.textContent = ''; return; }
+      var w = sl.clientWidth;               // 컬럼 레이아웃 폭(조상 transform 영향 없음, 보통 460)
+      if (!w) return;
+      var S = window.innerWidth / w;        // 화면 폭을 채우는 배율
+      if (S < 1.01) { if (st) st.textContent = ''; return; }
+      var h = Math.floor(window.innerHeight / S); // 확대 후 화면 높이와 일치하는 논리 높이
+      // 확대 대상은 스크롤 레이어가 아니라 그 부모(.toon-box). 스크롤 레이어엔 높이만 맞춰
+      // 보이는 영역을 일치시킨다.
+      var css = '[class*="ToonBox_toonBox"]{transform:scale(' + S.toFixed(4) + ') !important;' +
+                'transform-origin:50% 0 !important;height:' + h + 'px !important;}' +
+                '.toon-scroll-layer{height:' + h + 'px !important;max-height:' + h + 'px !important;}';
+      if (!st) { st = document.createElement('style'); st.id = ID; document.head.appendChild(st); }
+      if (st.textContent !== css) st.textContent = css;
+    } catch (e) {}
+  }
+  setInterval(apply, 500);
+  apply();
+})();
+"""
 
 /**
  * 화이트리스트 도메인 밖으로 나갈 수 없는 제한 브라우저.
@@ -130,11 +170,7 @@ fun RestrictedWebViewScreen(
         }
         androidx.compose.material3.HorizontalDivider(color = LineNeutral)
 
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            // 460dp 폭으로 그린 웹뷰를 화면 좌우 SCREEN_FILL_RATIO(90%)까지 균일 확대한다.
-            val scale = (maxWidth.value * SCREEN_FILL_RATIO) / VOICETOON_REFERENCE_WIDTH_DP
-            val webViewHeightDp = (maxHeight.value / scale).dp
-
+        Box(modifier = Modifier.fillMaxSize()) {
             AndroidView(
                 factory = { ctx ->
                     WebView(ctx).apply {
@@ -144,18 +180,17 @@ fun RestrictedWebViewScreen(
                         )
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
-                        // useWideViewPort/loadWithOverviewMode는 기본값(false)을 유지한다. 그래야
-                        // 레이아웃 뷰포트 폭 = 뷰 폭(460dp) = window.innerWidth 460으로 고정되어
-                        // 사이트의 460 기준 스크롤 계산과 정확히 맞는다.
+                        // 데스크탑 레이아웃으로 렌더링: 넓은 뷰포트를 사용하고 콘텐츠를 화면 폭에 맞춰 축소.
+                        settings.useWideViewPort = true
+                        settings.loadWithOverviewMode = true
                         settings.setSupportMultipleWindows(false)
                         settings.javaScriptCanOpenWindowsAutomatically = false
                         settings.setSupportZoom(false)
                         settings.builtInZoomControls = false
                         settings.allowFileAccess = false
                         settings.allowContentAccess = false
-                        // 사이트가 웹뷰(UA에 포함된 "wv" 표시)를 감지해 리소스를 다르게 서빙하는 경우를 대비해
-                        // 일반 Chrome과 동일한 User-Agent로 보이도록 한다.
-                        settings.userAgentString = settings.userAgentString.replace("; wv", "")
+                        // 사이트가 데스크탑 버전을 내려주도록 데스크탑 Chrome UA로 접속한다.
+                        settings.userAgentString = DESKTOP_USER_AGENT
 
                         setOnLongClickListener { true } // 롱프레스 컨텍스트 메뉴(이미지 저장/링크 복사 등) 차단
                         setDownloadListener { _, _, _, _, _ ->
@@ -197,6 +232,8 @@ fun RestrictedWebViewScreen(
 
                             override fun onPageFinished(view: WebView, url: String?) {
                                 isLoading = false
+                                // 웹툰 리더 그림 영역 확대 스크립트 주입(SPA 대비 setInterval로 자체 감시).
+                                view.evaluateJavascript(TOON_FIT_JS, null)
                             }
 
                             override fun onReceivedError(
@@ -216,17 +253,7 @@ fun RestrictedWebViewScreen(
                     }
                 },
                 update = { },
-                modifier = Modifier
-                    .width(VOICETOON_REFERENCE_WIDTH_DP.dp)
-                    .height(webViewHeightDp)
-                    .graphicsLayer(
-                        scaleX = scale,
-                        scaleY = scale,
-                        // 좌우는 가운데 기준으로 확대(→ 화면 중앙 정렬, 좌우 5% 여백),
-                        // 세로는 위 기준으로 확대(→ 상단부터 화면 높이를 꽉 채움).
-                        transformOrigin = TransformOrigin(0.5f, 0f)
-                    )
-                    .align(Alignment.TopCenter)
+                modifier = Modifier.fillMaxSize()
             )
 
             if (loadError != null) {
