@@ -108,7 +108,26 @@ sdk.dir=C\:\\Android\\Sdk
 - **월요일 회사 복귀 시**: 회사 PC에서 `git pull` 먼저. (이 회사 PC엔 이미 origin이
   연결돼 있고 schannel 설정도 돼 있음.) 집에서 push한 커밋을 받아 이어서 작업.
 
-## 7. git 관리 밖에 있는 것들 (별도로 옮겨야 함)
+## 7. 태블릿(키오스크 잠금 상태) 트러블슈팅
+
+이 테스트 기기(adb 시리얼 `HA1EHGAS`)는 이미 Device Owner + Lock Task로 프로비저닝되어
+있어 일반 개발 중에도 아래 상황을 자주 만난다.
+
+- **adb devices가 `unauthorized`로 계속 나옴**: 키오스크(Lock Task) 상태에서는 USB 디버깅
+  허용 팝업이 화면에 안 뜬다. 홈 화면 로고 **5회 탭 → PIN(기본 `0000`)** → 관리자 메뉴 →
+  **"키오스크 관리 > 키오스크 모드 해제"** 실행 후 팝업이 뜨면 허용. 확인 후 다시 잠가도 무방.
+- **`adb shell am force-stop`으로 앱을 껐더니 흰 화면에서 멈춤**: Lock Task가 앱을 즉시
+  재기동시키는 과정에서 렌더링이 걸리는 경우가 있었다. `adb reboot`로 재부팅하면 BOOT_COMPLETED
+  리시버가 자동으로 키오스크 홈을 정상 복귀시킨다(README §프로비저닝 참고). 앱만 다시 실행하려면
+  `am force-stop` 대신 `am start -n com.dobedub.kiosk/.MainActivity`를 먼저 시도.
+- **화면이 세로 전체가 아니라 좁게(양옆 검은 여백) 나옴**: 재부팅 직후 일시적 현상이었고
+  몇 초 후 정상화됨. 계속되면 `adb shell wm size`로 해상도 확인.
+- **웹뷰 디버깅(CDP)**: `adb shell cat /proc/net/unix | grep webview_devtools_remote_`로 소켓
+  이름을 찾고 `adb forward tcp:9222 localabstract:<소켓이름>` 후 `http://localhost:9222/json/list`.
+  SPA 라우팅이라 페이지 이동 시 page id가 안 바뀌는 경우가 많으니 재진입 시마다 목록을
+  다시 확인할 것.
+
+## 8. git 관리 밖에 있는 것들 (별도로 옮겨야 함)
 
 - 샘플 동영상(약 2.4GB, `../[두비덥 보이스툰] ...` 폴더) — 용량 때문에 git 제외.
   코드만 개발할 땐 없어도 됨(동영상 목록이 비어 보일 뿐). 실제 재생 테스트 시 필요.
