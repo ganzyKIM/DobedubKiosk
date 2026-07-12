@@ -55,54 +55,48 @@ private const val DESKTOP_USER_AGENT =
         "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 /**
- * 웹툰 리더에서 **그림 영역만** 화면에 꽉 차게 확대하는 스크립트 (태블릿 실기기 CDP 실측으로 검증).
+ * 웹툰 리더에서 **그림 영역을 화면 좌우 꽉 차게** 만드는 CSS 주입 (태블릿 실기기 CDP 실측으로 검증).
  *
- * 리더 구조: 그림은 `.toon-scroll-layer`(레이아웃 460px 컬럼, 화면 가운데, overflow 스크롤)
- * 안에서 사이트가 오디오에 맞춰 scrollTop을 구동한다. 그 부모 `.toon-box`(ToonBox_toonBox)는
- * 스크롤/클립을 하지 않는 래퍼다. 헤더(뒤로/제목)·푸터(재생하기/마이 보이스 등) UI는 이
- * 래퍼 밖의 별도 요소다.
+ * 리더는 데스크탑 UA로도 그림 컬럼을 460px로 캡(`.viewer-layout`의 `max-width:460px` +
+ * `margin:auto` 중앙정렬)해서 넓은 화면 가운데 좁게 박혀 나온다. 이 컬럼을 화면 폭까지 넓혀야
+ * 한다.
  *
- * 확대 대상 = **스크롤 레이어가 아니라 그 부모 `.toon-box`**. 스크롤 레이어(clip 요소)에 직접
- * transform을 걸면 WebView 합성 단계에서 클립이 원래 460px 폭 그대로 적용돼 그림 좌우가 잘린다
- * (실기기 실측 확인). 반면 스크롤 안 하는 부모를 확대하면, 스크롤 레이어는 460 폭으로 그림을
- * 온전히 담은 뒤 그 결과 전체가 부모 transform으로 800까지 확대돼 **좌우가 잘리지 않는다**.
+ * **왜 transform이 아니라 실제 폭 변경인가**: 이 WebView(Chromium)는 overflow-scroll 하는
+ * 요소(`.toon-scroll-layer`)나 그 조상에 `transform: scale`을 걸어도, 스크롤 영역 안의 그림을
+ * 실제로 확대 렌더링하지 않는다 — getBoundingClientRect는 확대된 크기(800)를 보고하지만 합성된
+ * 픽셀은 원래 460 폭에서 잘린다(실기기 스크린샷으로 확인: 오른쪽 말풍선이 잘림). 그래서
+ * transform 대신 **레이아웃 폭 자체**를 화면 폭으로 바꾼다.
  *
- * 배율 S = 화면폭/컬럼폭. 스크롤 레이어의 논리 높이를 `화면높이/S`로 맞춰 "사이트가 보인다고
- * 계산하는 영역"과 "확대되어 실제 보이는 영역"을 일치시킨다 → 현재 재생 컷이 아래로 잘려
- * 안 보이는 일이 없다. 원점 50% 0: 윗변은 화면 위에 고정된 채 아래로만 늘어나고 좌우는 가운데
- * 정렬로 채운다. scrollHeight(19277)·컬럼 레이아웃 폭(460)은 불변이라 오디오-스크롤 싱크 유지.
- * CSS transform은 브라우저가 터치 좌표를 자동 보정하므로 확대 후에도 터치·스크롤이 정상 동작.
- * 헤더/푸터는 래퍼 밖이라 크기가 변하지 않는다.
+ * 방법: `.viewer-layout`의 460 캡·중앙정렬을 풀고, 컬럼 체인과 `.toon-image`를 `100vw`로,
+ * 스크롤 레이어 안쪽 래퍼(클래스 없는 div 포함)의 460 잔재 중앙정렬도 좌측정렬로 눕힌다.
+ * 그러면 그림이 실제로 화면 폭을 꽉 채우고(x=0..화면폭) 좌우가 잘리지 않으며, 세로는 자연스러운
+ * 스크롤이라 아래로도 잘리지 않는다. 사이트는 넓어진 컬럼을 그대로 인식(폰에서 보듯)하므로 컷
+ * offset 기반 오디오-스크롤 싱크가 유지된다. 헤더/푸터 UI는 컬럼 밖 요소라 그대로다.
  *
- * SPA 라우팅으로 리더에 들어왔다 나갈 수 있어 setInterval로 감시하고, 리더가 아니면 스타일을
- * 비워 원상복구한다.
+ * 클래스 셀렉터 기반이라 리더가 아닌 페이지(홈/목록)에선 매칭되는 요소가 없어 무효과다. SPA
+ * 라우팅으로 head가 유지되므로 한 번 주입한 <style>이 리더 진입 시 자동 적용되고, 혹시 사라지면
+ * setInterval로 다시 채운다.
  */
 private const val TOON_FIT_JS = """
 (function(){
   if (window.__dobedubToonFit) return;
   window.__dobedubToonFit = true;
   var ID = '__dobedub_toon_fit';
-  function apply(){
+  var CSS =
+    '[class*="viewer-layout"]{max-width:100vw !important;width:100vw !important;margin:0 !important;}' +
+    '[class*="viewer-body"],[class*="viewer-body-player"],[class*="toon-view"],[class*="toon-content"],[class*="ToonBox_toonBox"],[class*="ToonBox_toonContent"],.toon-scroll-layer{width:100vw !important;max-width:100vw !important;left:0 !important;margin:0 !important;}' +
+    '.toon-scroll-layer{justify-content:flex-start !important;align-items:flex-start !important;}' +
+    '.toon-scroll-layer div{width:100vw !important;max-width:100vw !important;left:0 !important;margin:0 !important;transform:none !important;}' +
+    '.toon-image{width:100vw !important;max-width:100vw !important;height:auto !important;margin:0 !important;left:0 !important;}';
+  function ensure(){
     try {
       var st = document.getElementById(ID);
-      var sl = document.querySelector('.toon-scroll-layer');
-      if (!sl) { if (st) st.textContent = ''; return; }
-      var w = sl.clientWidth;               // 컬럼 레이아웃 폭(조상 transform 영향 없음, 보통 460)
-      if (!w) return;
-      var S = window.innerWidth / w;        // 화면 폭을 채우는 배율
-      if (S < 1.01) { if (st) st.textContent = ''; return; }
-      var h = Math.floor(window.innerHeight / S); // 확대 후 화면 높이와 일치하는 논리 높이
-      // 확대 대상은 스크롤 레이어가 아니라 그 부모(.toon-box). 스크롤 레이어엔 높이만 맞춰
-      // 보이는 영역을 일치시킨다.
-      var css = '[class*="ToonBox_toonBox"]{transform:scale(' + S.toFixed(4) + ') !important;' +
-                'transform-origin:50% 0 !important;height:' + h + 'px !important;}' +
-                '.toon-scroll-layer{height:' + h + 'px !important;max-height:' + h + 'px !important;}';
-      if (!st) { st = document.createElement('style'); st.id = ID; document.head.appendChild(st); }
-      if (st.textContent !== css) st.textContent = css;
+      if (!st) { st = document.createElement('style'); st.id = ID; (document.head || document.documentElement).appendChild(st); }
+      if (st.textContent !== CSS) st.textContent = CSS;
     } catch (e) {}
   }
-  setInterval(apply, 500);
-  apply();
+  setInterval(ensure, 1000);
+  ensure();
 })();
 """
 
