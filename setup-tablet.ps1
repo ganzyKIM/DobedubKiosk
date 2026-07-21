@@ -10,8 +10,9 @@
     3. Android System WebView 업데이트 (동봉 APK)
     4. 키오스크 APK 설치
     5. Device Owner 지정
-    6. 샘플 동영상 투입 (이미 있으면 건너뜀)
-    7. 앱 실행 + 최종 검증
+    6. 기본 앱(블로트웨어) 정리 — 키오스크에 불필요한 소비자 앱만 제거
+    7. 샘플 동영상 투입 (이미 있으면 건너뜀)
+    8. 앱 실행 + 최종 검증
 
   핵심 제약(회피 불가): Device Owner 지정은 기기에 계정이 하나도 없어야 성공한다.
   계정이 남아있으면 이 스크립트가 감지해 안내하며, 계정 삭제 또는 공장초기화가 필요하다.
@@ -21,6 +22,7 @@
   powershell -ExecutionPolicy Bypass -File .\setup-tablet.ps1
   .\setup-tablet.ps1 -SkipVideo          # 영상 투입 생략
   .\setup-tablet.ps1 -SkipWebView        # WebView 업데이트 생략
+  .\setup-tablet.ps1 -SkipDebloat        # 기본 앱 정리 생략
   .\setup-tablet.ps1 -ForceVideo         # 같은 영상이 있어도 다시 push
 #>
 
@@ -32,7 +34,58 @@ param(
     [string]$AdminReceiver = "com.dobedub.kiosk/.kiosk.AdminReceiver",
     [switch]$SkipVideo,
     [switch]$SkipWebView,
+    [switch]$SkipDebloat,
     [switch]$ForceVideo
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 기본 탑재(블로트웨어) 중 "제거해도 키오스크 동작에 지장 없는 소비자 앱"만 큐레이션한 목록.
+# pm uninstall --user 0 로 현재 사용자에서만 제거한다(루트 불필요, 공장초기화로 복구 가능).
+#
+# 절대 넣지 말 것(키오스크/시스템 필수): com.google.android.webview(웹툰 리더),
+#   com.google.android.inputmethod.latin(키보드), com.android.systemui, com.android.settings,
+#   *.launcher / launcher.provider(홈 폴백), com.google.android.gms/gsf, com.android.vending,
+#   packageinstaller, permissioncontroller, networkstack, dolby.*(오디오) 등.
+# 불확실한 OEM 시스템성 앱(com.lenovo.smartnavigation, com.tblenovo.landscapevision 등)도 제외.
+# 이 목록은 Lenovo TB-J606F(Android 11) 실제 패키지 기준으로 작성됨.
+# ─────────────────────────────────────────────────────────────────────────────
+$BloatPackages = @(
+    # --- Google 소비자 앱 ---
+    "com.android.chrome",                               # 크롬(브라우저) — 키오스크는 자체 WebView 사용
+    "com.google.android.googlequicksearchbox",          # Google 앱/검색
+    "com.google.android.apps.googleassistant",          # 어시스턴트
+    "com.google.android.apps.maps",                     # 지도
+    "com.google.android.apps.photos",                   # 포토
+    "com.google.android.apps.docs",                     # 드라이브/문서
+    "com.google.android.apps.books",                    # Play 도서
+    "com.google.android.videos",                        # Play 영화
+    "com.google.android.youtube",                       # 유튜브
+    "com.google.android.apps.youtube.music",            # 유튜브 뮤직
+    "com.google.android.apps.youtube.music.setupwizard",
+    "com.google.android.gm",                            # 지메일
+    "com.google.android.calendar",                      # 캘린더
+    "com.google.android.contacts",                      # 연락처
+    "com.google.android.deskclock",                     # 시계
+    "com.google.android.calculator",                    # 계산기
+    "com.google.android.keep",                          # Keep 메모
+    "com.google.android.apps.nbu.files",                # Files by Google
+    "com.google.android.apps.tachyon",                  # Meet(듀오)
+    "com.google.android.apps.subscriptions.red",        # Google One
+    "com.google.android.apps.kids.home",                # 키즈 스페이스
+    "com.google.android.apps.wellbeing",                # 디지털 웰빙
+    "com.google.android.apps.mediahome.launcher",
+    # --- Microsoft / Netflix ---
+    "com.microsoft.office.officehubrow",                # Office
+    "com.microsoft.office.onenote",                     # OneNote
+    "com.microsoft.bing.wallpapers",                    # Bing 배경화면
+    "com.netflix.mediaclient",                          # 넷플릭스
+    # --- Lenovo/OEM 소비자 앱 & 데모 ---
+    "com.motorola.demo",                                # 매장 데모
+    "com.tblenovo.center",                              # Lenovo 프로모/스토어 허브
+    "com.tblenovo.lenovowhatsnew",                      # What's New
+    "com.lenovo.penmenu",                               # 펜 메뉴(스타일러스)
+    "com.wacom.bamboopapertab",                         # Wacom 노트
+    "com.steadfastinnovation.android.projectpapyrus"    # Squid 노트
 )
 
 $ErrorActionPreference = "Stop"
@@ -233,9 +286,29 @@ if ($alreadyOwner) {
     }
 }
 
-# ---------- 6. 샘플 동영상 투입 ----------
+# ---------- 6. 기본 앱(블로트웨어) 정리 ----------
+if (-not $SkipDebloat) {
+    Head "6. 기본 앱 정리 (불필요한 선탑재 앱 제거)"
+    Info "키오스크에 불필요한 소비자 앱만 제거합니다 (WebView/키보드/시스템은 유지, 공장초기화로 복구 가능)."
+    $removed = 0; $absent = 0; $failed = 0
+    foreach ($pkg in $BloatPackages) {
+        $res = Adb shell pm uninstall --user 0 $pkg
+        if ($res.Text -match "Success") {
+            Ok "제거: $pkg"; $removed++
+        } elseif ($res.Text -match "not installed for 0|Unknown package|not installed|DELETE_FAILED_INTERNAL_ERROR.*not installed") {
+            $absent++   # 이미 없거나 이 사용자에 미설치 — 조용히 통과
+        } else {
+            Warn "제거 실패(건너뜀): $pkg — $($res.Text.Trim())"; $failed++
+        }
+    }
+    Info "정리 결과 — 제거 $removed / 이미없음 $absent / 실패 $failed (총 $($BloatPackages.Count)개 시도)"
+} else {
+    Head "6. 기본 앱 정리 (건너뜀: -SkipDebloat)"
+}
+
+# ---------- 7. 샘플 동영상 투입 ----------
 if (-not $SkipVideo) {
-    Head "6. 샘플 동영상 투입"
+    Head "7. 샘플 동영상 투입"
     $remoteDir = "/sdcard/Android/data/$PackageName/files/videos"
     $mp4s = @()
     if (Test-Path -LiteralPath $VideoDir) {
@@ -272,11 +345,11 @@ if (-not $SkipVideo) {
         }
     }
 } else {
-    Head "6. 동영상 투입 (건너뜀: -SkipVideo)"
+    Head "7. 동영상 투입 (건너뜀: -SkipVideo)"
 }
 
-# ---------- 7. 실행 + 검증 ----------
-Head "7. 앱 실행 및 검증"
+# ---------- 8. 실행 + 검증 ----------
+Head "8. 앱 실행 및 검증"
 Adb shell am start -n "$PackageName/.MainActivity" | Out-Null
 Start-Sleep -Seconds 2
 $dp2 = (Adb shell dumpsys device_policy).Text
