@@ -26,20 +26,22 @@ JAVA_HOME="/path/to/Android Studio/jbr" ./gradlew assembleDebug
 
 ## 태블릿 프로비저닝 (소량 납품 기준)
 
-1. 태블릿 공장초기화 → 설정 마법사에서 **계정 로그인 화면을 건너뛴 상태**로 둔다 (Wi-Fi 건너뛰기 또는 비행기 모드).
-2. USB로 PC와 연결, USB 디버깅 허용.
-3. 저장소 루트에서 실행:
+**원클릭 세팅**: 태블릿을 USB로 연결하고 **`태블릿-세팅.bat` 을 더블클릭**하면
+adb 탐색 → 연결 대기 → 계정 점검 → WebView 업데이트 → APK 설치 → Device Owner 지정 →
+샘플 동영상 투입 → 실행/검증까지 자동으로 진행된다.
 
-   ```powershell
-   ./provision-kiosk.ps1
-   ```
+납품 담당자용 상세 절차·문제 해결은 **[납품_매뉴얼.md](납품_매뉴얼.md)** 참고.
 
-   내부적으로 다음을 수행한다: APK 설치 → `adb shell dpm set-device-owner com.dobedub.kiosk/.kiosk.AdminReceiver` → 샘플 동영상 push.
+수동 실행(옵션 제어)이 필요하면:
 
-4. 앱 최초 실행 → 홈 화면 로고 5회 탭 → 기본 PIN `0000` 으로 관리자 진입 → PIN 변경, 시작 URL/허용 도메인 확인.
-5. "키오스크 관리 > 키오스크 모드 재진입" 없이도 최초 실행 시 자동으로 Lock Task가 걸린다.
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup-tablet.ps1            # 전체
+powershell -ExecutionPolicy Bypass -File .\setup-tablet.ps1 -SkipVideo # 영상 생략
+```
 
-Device Owner 지정은 **기기에 구글 계정이 하나도 없는 상태에서만** 성공한다. 이미 계정이 등록된 기기는 공장초기화부터 다시 해야 한다.
+> 핵심 제약: Device Owner 지정은 **기기에 계정이 하나도 없는 상태에서만** 성공한다.
+> 이미 계정이 등록된 기기는 계정을 모두 삭제하거나 공장초기화(초기설정에서 로그인 건너뛰기)해야 한다.
+> 스크립트가 계정을 자동 감지해 안내한다. (구 `provision-kiosk.ps1` 은 `setup-tablet.ps1` 로 통합됨)
 
 ## 현재 설정값
 
