@@ -79,9 +79,14 @@ if (-not $adb) {
 Ok "adb: $adb"
 
 # adb 를 감싸 호출하고 (표준출력+표준에러) 문자열과 종료코드를 함께 돌려준다.
+# adb 는 정상 상황에서도 stderr 를 쓰므로, $ErrorActionPreference=Stop 이 이를 종료 오류로
+# 취급하지 않도록 함수 안에서만 Continue 로 낮춘다.
 function Adb {
-    $out = & $adb @args 2>&1 | ForEach-Object { "$_" }
-    return [pscustomobject]@{ Code = $LASTEXITCODE; Text = ($out -join "`n") }
+    $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+    try {
+        $out = & $adb @args 2>&1 | ForEach-Object { "$_" }
+        return [pscustomobject]@{ Code = $LASTEXITCODE; Text = ($out -join "`n") }
+    } finally { $ErrorActionPreference = $old }
 }
 
 & $adb start-server | Out-Null
@@ -110,8 +115,14 @@ while (-not $serial) {
     Start-Sleep -Seconds 2
 }
 Ok "연결됨: $serial"
-# 이후 모든 adb 호출을 이 기기로 고정
-function Adb { $out = & $adb -s $serial @args 2>&1 | ForEach-Object { "$_" }; return [pscustomobject]@{ Code = $LASTEXITCODE; Text = ($out -join "`n") } }
+# 이후 모든 adb 호출을 이 기기로 고정 (stderr 가 종료 오류가 되지 않도록 동일하게 방어)
+function Adb {
+    $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+    try {
+        $out = & $adb -s $serial @args 2>&1 | ForEach-Object { "$_" }
+        return [pscustomobject]@{ Code = $LASTEXITCODE; Text = ($out -join "`n") }
+    } finally { $ErrorActionPreference = $old }
+}
 
 # ---------- 2. 사전 점검 ----------
 Head "2. 사전 점검"
@@ -240,7 +251,9 @@ if (-not $SkipVideo) {
             $remote = "$remoteDir/$($f.Name)"
             $localSize = $f.Length
             if (-not $ForceVideo) {
-                $stat = (Adb shell stat -c %s "`"$remote`"").Text.Trim()
+                # 공백 있는 원격 경로는 device 셸에서 단일따옴표로 감싸야 안 쪼개진다.
+                # (adb shell 은 인자들을 공백으로 이어 셸에 넘기므로 PowerShell 따옴표는 소실됨)
+                $stat = (Adb shell "stat -c %s '$remote'").Text.Trim()
                 if ($stat -match "^\d+$" -and [int64]$stat -eq $localSize) {
                     Ok "이미 있음 (건너뜀): $($f.Name)"
                     continue
