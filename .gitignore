@@ -12,3 +12,12 @@
 
 app/build/
 app/release/
+
+# 서명 키 — 절대 커밋 금지(별도 안전 백업). 분실 시 기존 기기 자동 업데이트 불가.
+keystore.properties
+*.jks
+*.keystore
+
+# 서버 런타임(로컬 개발용)
+server/node_modules/
+server/data/

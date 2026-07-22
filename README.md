@@ -43,6 +43,17 @@ powershell -ExecutionPolicy Bypass -File .\setup-tablet.ps1 -SkipVideo # 영상 
 > 이미 계정이 등록된 기기는 계정을 모두 삭제하거나 공장초기화(초기설정에서 로그인 건너뛰기)해야 한다.
 > 스크립트가 계정을 자동 감지해 안내한다. (구 `provision-kiosk.ps1` 은 `setup-tablet.ps1` 로 통합됨)
 
+## 원격 관리 / 앱 자동 업데이트 (함대 관리)
+
+배포된 태블릿을 현장 방문 없이 일괄 업데이트하고 접속·버전 현황을 백오피스에서 본다.
+- 앱: 6시간마다 서버에 체크인 → 새 버전이면 **Device Owner 무인 설치**(`app/.../update/AppUpdater.kt`)
+- 서버/백오피스: `server/` (Node.js + SQLite), 대시보드 `/dashboard`
+- 전체 개요·서명 키 주의사항: **[원격관리_업데이트.md](원격관리_업데이트.md)**, 서버 운영: **[server/README.md](server/README.md)**
+
+> ⚠ **서명 키**: 업데이트는 같은 키로 서명된 APK만 가능하다. `release-keystore.jks` + `keystore.properties`
+> (git 제외)를 **반드시 백업**하고 빌드 PC마다 복사할 것. 분실 시 기존 기기 자동 업데이트 불가.
+> 운영 빌드는 `gradlew assembleRelease`(키스토어 보유 PC)로 만든다.
+
 ## 현재 설정값
 
 - 웹사이트 시작 URL: `https://splib.dobedub.com/home`

@@ -11,7 +11,11 @@ data class KioskSettings(
     val volumeMax: Int = 70,
     val brightness: Int = 80,
     val contactInfo: String = "",
-    val kioskLockEnabled: Boolean = true
+    val kioskLockEnabled: Boolean = true,
+    /** 함대 관리 서버 주소. 비어 있으면 BuildConfig.FLEET_SERVER_URL(빌드 기본값)을 사용한다. */
+    val fleetServerUrl: String = "",
+    /** 기관/도서관 이름 라벨 — 백오피스에서 기기를 식별하기 쉽게. */
+    val institutionLabel: String = ""
 ) {
     val hasPinConfigured: Boolean
         get() = !adminPinHash.isNullOrEmpty() && !adminPinSalt.isNullOrEmpty()

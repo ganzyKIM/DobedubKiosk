@@ -27,7 +27,7 @@
 #>
 
 param(
-    [string]$ApkPath       = "$PSScriptRoot\app\build\outputs\apk\debug\app-debug.apk",
+    [string]$ApkPath       = "",   # 비우면 릴리스 APK 우선, 없으면 디버그 APK 자동 선택
     [string]$WebViewApk    = "",                       # 비우면 상위 폴더에서 자동 탐색
     [string]$VideoDir      = "$PSScriptRoot\..",       # 이 폴더(하위 포함)에서 *.mp4 검색
     [string]$PackageName   = "com.dobedub.kiosk",
@@ -244,8 +244,20 @@ if (-not $SkipWebView) {
 
 # ---------- 4. 키오스크 APK 설치 ----------
 Head "4. 키오스크 앱 설치"
-if (-not (Test-Path -LiteralPath $ApkPath)) {
-    Die "APK 를 찾을 수 없습니다: $ApkPath`n       먼저 빌드하세요:  gradlew assembleDebug"
+# APK 자동 선택: 릴리스(고정 키 서명, 자동 업데이트 호환) 우선, 없으면 디버그로 폴백.
+if (-not $ApkPath) {
+    $relApk = Join-Path $PSScriptRoot "app\build\outputs\apk\release\app-release.apk"
+    $dbgApk = Join-Path $PSScriptRoot "app\build\outputs\apk\debug\app-debug.apk"
+    if (Test-Path -LiteralPath $relApk) {
+        $ApkPath = $relApk
+    } elseif (Test-Path -LiteralPath $dbgApk) {
+        $ApkPath = $dbgApk
+        Warn "릴리스 APK가 없어 디버그 APK로 설치합니다. 디버그 서명은 원격 자동 업데이트와 호환되지 않습니다."
+        Warn "운영 납품 시에는 'gradlew assembleRelease'(키스토어 보유 PC)로 만든 릴리스 APK를 사용하세요."
+    }
+}
+if (-not $ApkPath -or -not (Test-Path -LiteralPath $ApkPath)) {
+    Die "APK 를 찾을 수 없습니다.`n       먼저 빌드하세요:  gradlew assembleRelease  (또는 assembleDebug)"
 }
 Info "설치: $(Split-Path $ApkPath -Leaf)"
 $r = Adb install -r "$ApkPath"

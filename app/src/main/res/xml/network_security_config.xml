@@ -3,5 +3,9 @@
     <base-config cleartextTrafficPermitted="false" />
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">dobedub.com</domain>
+        <!-- 로컬 개발/테스트용(adb reverse 로 PC 서버 접속). 운영 함대 서버는 HTTPS 사용. -->
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
     </domain-config>
 </network-security-config>

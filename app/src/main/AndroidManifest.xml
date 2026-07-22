@@ -57,6 +57,12 @@
             </intent-filter>
         </receiver>
 
+        <!-- 앱 자동 업데이트: PackageInstaller 세션 결과 수신(우리 앱만 대상, 비공개). -->
+        <receiver
+            android:name=".update.UpdateInstallReceiver"
+            android:exported="false" />
+
+
     </application>
 
 </manifest>
