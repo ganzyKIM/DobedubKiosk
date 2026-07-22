@@ -22,6 +22,7 @@ import com.dobedub.kiosk.admin.ui.AdminInfoScreen
 import com.dobedub.kiosk.admin.ui.AdminKioskScreen
 import com.dobedub.kiosk.admin.ui.AdminMenuScreen
 import com.dobedub.kiosk.admin.ui.AdminPinScreen
+import com.dobedub.kiosk.admin.ui.AdminUpdateScreen
 import com.dobedub.kiosk.admin.ui.AdminWifiScreen
 import com.dobedub.kiosk.data.KioskSettingsRepository
 import com.dobedub.kiosk.ui.home.HomeScreen
@@ -81,6 +82,7 @@ fun KioskNavHost(
                 onOpenContent = { navController.navigate(Routes.ADMIN_CONTENT) },
                 onOpenDevice = { navController.navigate(Routes.ADMIN_DEVICE) },
                 onOpenWifi = { navController.navigate(Routes.ADMIN_WIFI) },
+                onOpenUpdate = { navController.navigate(Routes.ADMIN_UPDATE) },
                 onOpenAbout = { navController.navigate(Routes.ADMIN_ABOUT) },
                 onExit = { goHome() }
             )
@@ -117,6 +119,10 @@ fun KioskNavHost(
 
         composable(Routes.ADMIN_WIFI) {
             AdminWifiScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Routes.ADMIN_UPDATE) {
+            AdminUpdateScreen(viewModel = adminViewModel, onBack = { navController.popBackStack() })
         }
 
         composable(Routes.ADMIN_ABOUT) {

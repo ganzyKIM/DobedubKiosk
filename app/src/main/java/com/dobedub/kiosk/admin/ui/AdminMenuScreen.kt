@@ -26,6 +26,7 @@ fun AdminMenuScreen(
     onOpenContent: () -> Unit,
     onOpenDevice: () -> Unit,
     onOpenWifi: () -> Unit,
+    onOpenUpdate: () -> Unit,
     onOpenAbout: () -> Unit,
     onExit: () -> Unit
 ) {
@@ -35,6 +36,7 @@ fun AdminMenuScreen(
         AdminMenuEntry("콘텐츠 설정", "시작 URL, 허용 도메인", onOpenContent),
         AdminMenuEntry("기기 설정", "밝기, 볼륨, 무조작 시간", onOpenDevice),
         AdminMenuEntry("Wi-Fi 설정", "무선 네트워크 연결", onOpenWifi),
+        AdminMenuEntry("원격 관리 / 업데이트", "서버 주소, 기관명, 업데이트 확인", onOpenUpdate),
         AdminMenuEntry("정보", "앱/기기 정보", onOpenAbout)
     )
 

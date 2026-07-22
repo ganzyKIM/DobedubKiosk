@@ -9,6 +9,7 @@ object Routes {
     const val ADMIN_CONTENT = "admin_content"
     const val ADMIN_DEVICE = "admin_device"
     const val ADMIN_WIFI = "admin_wifi"
+    const val ADMIN_UPDATE = "admin_update"
     const val ADMIN_ABOUT = "admin_about"
     const val VIDEO_LIST = "video_list"
     const val VIDEO_PLAYER = "video_player/{index}"

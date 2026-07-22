@@ -104,6 +104,14 @@ class AdminViewModel(private val repository: KioskSettingsRepository) : ViewMode
         repository.setContactInfo(text)
     }
 
+    fun updateFleetServerUrl(url: String) = viewModelScope.launch {
+        repository.setFleetServerUrl(url)
+    }
+
+    fun updateInstitutionLabel(label: String) = viewModelScope.launch {
+        repository.setInstitutionLabel(label)
+    }
+
     class Factory(private val repository: KioskSettingsRepository) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {

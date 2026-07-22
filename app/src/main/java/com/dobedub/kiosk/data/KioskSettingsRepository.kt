@@ -29,6 +29,8 @@ class KioskSettingsRepository(private val context: Context) {
         val BRIGHTNESS = intPreferencesKey("brightness")
         val CONTACT_INFO = stringPreferencesKey("contact_info")
         val KIOSK_LOCK_ENABLED = booleanPreferencesKey("kiosk_lock_enabled")
+        val FLEET_SERVER_URL = stringPreferencesKey("fleet_server_url")
+        val INSTITUTION_LABEL = stringPreferencesKey("institution_label")
     }
 
     val settingsFlow: Flow<KioskSettings> = context.dataStore.data.map { prefs ->
@@ -47,7 +49,9 @@ class KioskSettingsRepository(private val context: Context) {
             volumeMax = prefs[Keys.VOLUME_MAX] ?: defaults.volumeMax,
             brightness = prefs[Keys.BRIGHTNESS] ?: defaults.brightness,
             contactInfo = prefs[Keys.CONTACT_INFO] ?: defaults.contactInfo,
-            kioskLockEnabled = prefs[Keys.KIOSK_LOCK_ENABLED] ?: defaults.kioskLockEnabled
+            kioskLockEnabled = prefs[Keys.KIOSK_LOCK_ENABLED] ?: defaults.kioskLockEnabled,
+            fleetServerUrl = prefs[Keys.FLEET_SERVER_URL] ?: defaults.fleetServerUrl,
+            institutionLabel = prefs[Keys.INSTITUTION_LABEL] ?: defaults.institutionLabel
         )
     }
 
@@ -99,5 +103,13 @@ class KioskSettingsRepository(private val context: Context) {
 
     suspend fun setKioskLockEnabled(enabled: Boolean) {
         context.dataStore.edit { it[Keys.KIOSK_LOCK_ENABLED] = enabled }
+    }
+
+    suspend fun setFleetServerUrl(url: String) {
+        context.dataStore.edit { it[Keys.FLEET_SERVER_URL] = url.trim() }
+    }
+
+    suspend fun setInstitutionLabel(label: String) {
+        context.dataStore.edit { it[Keys.INSTITUTION_LABEL] = label.trim() }
     }
 }

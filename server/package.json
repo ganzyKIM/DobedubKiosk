@@ -1,0 +1,19 @@
+{
+  "name": "dobedub-kiosk-fleet",
+  "version": "1.0.0",
+  "private": true,
+  "description": "두비덥 키오스크 함대 관리 서버 — 기기 체크인 수집, 앱 자동 업데이트 배포, 백오피스 대시보드",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "express": "^4.21.0",
+    "multer": "^2.0.1"
+  }
+}

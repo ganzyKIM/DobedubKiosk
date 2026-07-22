@@ -28,16 +28,23 @@ import com.dobedub.kiosk.nav.KioskNavHost
 import com.dobedub.kiosk.nav.Routes
 import com.dobedub.kiosk.ui.components.StatusOverlay
 import com.dobedub.kiosk.ui.theme.DobedubKioskTheme
+import com.dobedub.kiosk.update.AppUpdater
 import com.dobedub.kiosk.web.clearWebSession
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val DEFAULT_IDLE_TIMEOUT_MINUTES = 5
 private const val DEFAULT_VOLUME_MAX_PERCENT = 100
 
+/** 자동 업데이트 체크 주기(6시간). 시작 직후 1회 + 이후 주기적으로 체크인/업데이트. */
+private const val UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
+private const val UPDATE_INITIAL_DELAY_MS = 20_000L
+
 class MainActivity : ComponentActivity() {
 
     private val app get() = application as KioskApplication
     private val audioManager get() = getSystemService(AUDIO_SERVICE) as AudioManager
+    private val updater by lazy { AppUpdater(applicationContext) }
 
     private var navController: NavHostController? = null
     private val idleHandler = Handler(Looper.getMainLooper())
@@ -51,6 +58,7 @@ class MainActivity : ComponentActivity() {
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         hideSystemBars()
+        startPeriodicUpdateChecks()
 
         setContent {
             DobedubKioskTheme {
@@ -159,6 +167,24 @@ class MainActivity : ComponentActivity() {
             }
         }
         resetIdleTimer()
+    }
+
+    /**
+     * 시작 직후 1회 + 6시간마다 서버에 체크인하고, 새 버전이 있으면 홈 화면 유휴 상태일 때만 설치한다
+     * (웹툰/영상 재생 중 갑작스러운 재시작 방지). 설치가 시작되면 프로세스가 재시작되며 키오스크 홈으로 복귀한다.
+     */
+    private fun startPeriodicUpdateChecks() {
+        lifecycleScope.launch {
+            delay(UPDATE_INITIAL_DELAY_MS)
+            while (true) {
+                try {
+                    updater.runOnce(canInstallNow = { navController?.currentDestination?.route == Routes.HOME })
+                } catch (_: Exception) {
+                    // 네트워크 오류 등은 다음 주기에 재시도
+                }
+                delay(UPDATE_CHECK_INTERVAL_MS)
+            }
+        }
     }
 
     private fun hideSystemBars() {
