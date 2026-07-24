@@ -16,3 +16,13 @@ val SurfaceTint = Color(0xFFEAF6D2) // 히어로/배너 배경용 연한 라임
 val LabelSecondary = Color(0xFF70737C)
 val ChipTintBackground = Color(0x0DACF537) // Primary 5%
 val ChipBorder = Color(0x6EACF537) // Primary 43%
+
+// 모던 키오스크 UI 보조 토큰 (홈 재설계)
+val HomeBgTop = Color(0xFFFFFFFF)      // 상단 배경(흰색)
+val HomeBgBottom = Color(0xFFF1F8E4)   // 하단 배경(아주 연한 민트)
+val CardSurface = Color(0xFFFFFFFF)
+val CardBorder = Color(0x14000000)     // 검정 8% — 카드 외곽 미세 구분선
+// 3개 액션 카드 아이콘 배지 색 (공공기관 톤: 차분하고 접근성 있는 액센트)
+val AccentVideo = Color(0xFF2E7D32)    // 동영상 — 딥 그린
+val AccentWeb = Color(0xFF1E88E5)      // 웹사이트 — 블루
+val AccentVoice = Color(0xFF7C4DFF)    // 마이보이스 — 바이올렛(사이트 my-voice 톤)
