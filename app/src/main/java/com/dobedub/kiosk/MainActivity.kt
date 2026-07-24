@@ -40,6 +40,10 @@ private const val DEFAULT_VOLUME_MAX_PERCENT = 100
 private const val UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
 private const val UPDATE_INITIAL_DELAY_MS = 20_000L
 
+/** 프로비저닝 인텐트 엑스트라 키(태블릿 세팅 스크립트에서 도서관 주소/기관명 전달). */
+private const val EXTRA_START_URL = "kiosk_start_url"
+private const val EXTRA_LABEL = "kiosk_label"
+
 class MainActivity : ComponentActivity() {
 
     private val app get() = application as KioskApplication
@@ -58,6 +62,7 @@ class MainActivity : ComponentActivity() {
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         hideSystemBars()
+        handleProvisioningIntent(intent)
         startPeriodicUpdateChecks()
 
         setContent {
@@ -107,6 +112,34 @@ class MainActivity : ComponentActivity() {
                             .padding(top = 8.dp, end = 8.dp)
                     )
                 }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleProvisioningIntent(intent)
+    }
+
+    /**
+     * 프로비저닝(태블릿 세팅 스크립트)에서 넘긴 도서관 주소/기관명을 이 기기 설정에 반영한다.
+     *   am start ... --es kiosk_start_url "https://splib.dobedub.com/home" --es kiosk_label "splib"
+     * 도서관마다 서브도메인이 다르므로 기기별로 이 값을 심는다. 허용 도메인은 URL 호스트에서 자동 도출.
+     */
+    private fun handleProvisioningIntent(intent: android.content.Intent?) {
+        val url = intent?.getStringExtra(EXTRA_START_URL)?.trim()
+        val label = intent?.getStringExtra(EXTRA_LABEL)?.trim()
+        if (url.isNullOrBlank() && label.isNullOrBlank()) return
+        lifecycleScope.launch {
+            if (!url.isNullOrBlank()) {
+                app.settingsRepository.setStartUrl(url)
+                android.net.Uri.parse(url).authority?.takeIf { it.isNotBlank() }?.let { host ->
+                    app.settingsRepository.setAllowedDomains(listOf(host))
+                }
+            }
+            if (!label.isNullOrBlank()) {
+                app.settingsRepository.setInstitutionLabel(label)
             }
         }
     }

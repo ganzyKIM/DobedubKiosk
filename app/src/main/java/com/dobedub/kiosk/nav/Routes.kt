@@ -14,6 +14,7 @@ object Routes {
     const val VIDEO_LIST = "video_list"
     const val VIDEO_PLAYER = "video_player/{index}"
     const val WEB_VIEW = "web_view"
+    const val WEB_MY_VOICE = "web_my_voice"
 
     fun videoPlayer(index: Int) = "video_player/$index"
 }

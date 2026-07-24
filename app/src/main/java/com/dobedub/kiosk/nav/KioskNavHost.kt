@@ -59,6 +59,7 @@ fun KioskNavHost(
             HomeScreen(
                 onOpenVideos = { navController.navigate(Routes.VIDEO_LIST) },
                 onOpenWebsite = { navController.navigate(Routes.WEB_VIEW) },
+                onOpenMyVoice = { navController.navigate(Routes.WEB_MY_VOICE) },
                 onAdminUnlockRequested = { navController.navigate(Routes.ADMIN_PIN) }
             )
         }
@@ -176,5 +177,25 @@ fun KioskNavHost(
                 onUserInteraction = onUserInteraction
             )
         }
+
+        composable(Routes.WEB_MY_VOICE) {
+            // '마이보이스'는 도서관 웹사이트와 같은 출처(서브도메인)의 /my-voice 경로를 연다.
+            RestrictedWebViewScreen(
+                startUrl = myVoiceUrlFrom(settings.startUrl),
+                allowedDomains = settings.allowedDomains,
+                onExitToKioskHome = { goHome() },
+                onUserInteraction = onUserInteraction
+            )
+        }
     }
+}
+
+/** 시작 URL(예: https://splib.dobedub.com/home)과 같은 scheme+host 의 /my-voice 주소를 만든다. */
+private fun myVoiceUrlFrom(startUrl: String): String = try {
+    val uri = android.net.Uri.parse(startUrl)
+    val scheme = uri.scheme ?: "https"
+    val host = uri.authority
+    if (host.isNullOrBlank()) "https://splib.dobedub.com/my-voice" else "$scheme://$host/my-voice"
+} catch (e: Exception) {
+    "https://splib.dobedub.com/my-voice"
 }
