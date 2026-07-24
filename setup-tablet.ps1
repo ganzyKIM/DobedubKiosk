@@ -32,6 +32,8 @@ param(
     [string]$VideoDir      = "$PSScriptRoot\..",       # 이 폴더(하위 포함)에서 *.mp4 검색
     [string]$PackageName   = "com.dobedub.kiosk",
     [string]$AdminReceiver = "com.dobedub.kiosk/.kiosk.AdminReceiver",
+    [string]$LibrarySubdomain = "",   # 예: splib  → https://splib.dobedub.com/home (기기마다 다름)
+    [string]$StartUrl      = "",       # 전체 URL 직접 지정(있으면 서브도메인보다 우선)
     [switch]$SkipVideo,
     [switch]$SkipWebView,
     [switch]$SkipDebloat,
@@ -218,6 +220,28 @@ if (-not $alreadyOwner) {
     }
 }
 
+# ---------- 2.5 도서관 주소 입력 ----------
+# 도서관마다 서브도메인이 다르므로(예: splib) 이 기기의 시작 주소를 정한다.
+Head "2.5 도서관 주소"
+if (-not $StartUrl -and -not $LibrarySubdomain) {
+    Write-Host "  이 태블릿이 접속할 도서관 주소를 정합니다." -ForegroundColor Gray
+    Write-Host "  서브도메인만 입력하면 됩니다.  예) splib  →  https://splib.dobedub.com/home" -ForegroundColor Gray
+    $LibrarySubdomain = Read-Host "  도서관 서브도메인 (전체 URL 붙여넣기도 가능, 비우면 앱 기본값 유지)"
+}
+if (-not $StartUrl -and $LibrarySubdomain) {
+    if ($LibrarySubdomain -match '^https?://') { $StartUrl = $LibrarySubdomain.Trim() }
+    else { $StartUrl = "https://$($LibrarySubdomain.Trim()).dobedub.com/home" }
+}
+# 백오피스 식별용 라벨 = 서브도메인(호스트 첫 토큰)
+$LibLabel = ""
+if ($LibrarySubdomain -and $LibrarySubdomain -notmatch '^https?://') {
+    $LibLabel = $LibrarySubdomain.Trim()
+} elseif ($StartUrl -match '^https?://([^./]+)\.') {
+    $LibLabel = $Matches[1]
+}
+if ($StartUrl) { Ok "시작 주소: $StartUrl  (기관 라벨: $LibLabel)" }
+else { Warn "주소 미입력 — 앱 기본값(https://splib.dobedub.com/home) 유지" }
+
 # ---------- 3. WebView 업데이트 ----------
 if (-not $SkipWebView) {
     Head "3. Android System WebView 업데이트"
@@ -362,7 +386,13 @@ if (-not $SkipVideo) {
 
 # ---------- 8. 실행 + 검증 ----------
 Head "8. 앱 실행 및 검증"
-Adb shell am start -n "$PackageName/.MainActivity" | Out-Null
+if ($StartUrl) {
+    # 도서관 주소/기관명을 앱에 전달해 이 기기 설정으로 저장시킨다.
+    Adb shell am start -n "$PackageName/.MainActivity" --es kiosk_start_url "$StartUrl" --es kiosk_label "$LibLabel" | Out-Null
+    Ok "도서관 주소를 기기에 설정: $StartUrl"
+} else {
+    Adb shell am start -n "$PackageName/.MainActivity" | Out-Null
+}
 Start-Sleep -Seconds 2
 $dp2 = (Adb shell dumpsys device_policy).Text
 $ownerOk = ($dp2 -match "Device Owner" -and $dp2 -match [regex]::Escape($PackageName))

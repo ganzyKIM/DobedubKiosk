@@ -5,8 +5,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -36,6 +34,7 @@ private const val HIDDEN_ADMIN_TAP_COUNT = 5
 fun HomeScreen(
     onOpenVideos: () -> Unit,
     onOpenWebsite: () -> Unit,
+    onOpenMyVoice: () -> Unit,
     onAdminUnlockRequested: () -> Unit
 ) {
     var logoTapCount by remember { mutableIntStateOf(0) }
@@ -60,9 +59,9 @@ fun HomeScreen(
             }
         )
 
-        Row(
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(24.dp)
+        Column(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             HomeTile(
                 title = "동영상 보기",
@@ -80,6 +79,14 @@ fun HomeScreen(
                 modifier = Modifier.weight(1f),
                 onClick = onOpenWebsite
             )
+            HomeTile(
+                title = "마이보이스",
+                subtitle = "내 목소리로 만드는 보이스툰",
+                background = PrimaryHeavy,
+                titleColor = LabelNormal,
+                modifier = Modifier.weight(1f),
+                onClick = onOpenMyVoice
+            )
         }
     }
 }
@@ -95,8 +102,7 @@ private fun HomeTile(
 ) {
     Box(
         modifier = modifier
-            .fillMaxWidth()
-            .aspectRatio(1.1f)
+            .fillMaxSize()
             .clip(RoundedCornerShape(28.dp))
             .background(background)
             .clickable(onClick = onClick),
