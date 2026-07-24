@@ -283,7 +283,11 @@ if (-not $ApkPath) {
 if (-not $ApkPath -or -not (Test-Path -LiteralPath $ApkPath)) {
     Die "APK 를 찾을 수 없습니다.`n       먼저 빌드하세요:  gradlew assembleRelease  (또는 assembleDebug)"
 }
-Info "설치: $(Split-Path $ApkPath -Leaf)"
+$apkBuilt = (Get-Item -LiteralPath $ApkPath).LastWriteTime
+Info "설치: $(Split-Path $ApkPath -Leaf)  (빌드시각 $($apkBuilt.ToString('MM-dd HH:mm')))"
+if (((Get-Date) - $apkBuilt).TotalHours -gt 12) {
+    Warn "이 APK는 12시간 이상 전에 빌드됐습니다. 최신 코드가 맞는지 확인하세요(필요시 gradlew assembleRelease 재빌드)."
+}
 $r = Adb install -r "$ApkPath"
 if ($r.Code -ne 0 -and $r.Text -notmatch "Success") {
     if ($r.Text -match "INSTALL_FAILED_UPDATE_INCOMPATIBLE|signatures do not match") {
@@ -388,7 +392,8 @@ if (-not $SkipVideo) {
 Head "8. 앱 실행 및 검증"
 if ($StartUrl) {
     # 도서관 주소/기관명을 앱에 전달해 이 기기 설정으로 저장시킨다.
-    Adb shell am start -n "$PackageName/.MainActivity" --es kiosk_start_url "$StartUrl" --es kiosk_label "$LibLabel" | Out-Null
+    # 값에 공백이 있어도 안전하도록 device 셸용 단일따옴표로 감싼다(am 인자는 공백에서 쪼개짐).
+    Adb shell "am start -n $PackageName/.MainActivity --es kiosk_start_url '$StartUrl' --es kiosk_label '$LibLabel'" | Out-Null
     Ok "도서관 주소를 기기에 설정: $StartUrl"
 } else {
     Adb shell am start -n "$PackageName/.MainActivity" | Out-Null
