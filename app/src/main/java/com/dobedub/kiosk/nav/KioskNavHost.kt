@@ -60,7 +60,8 @@ fun KioskNavHost(
                 onOpenVideos = { navController.navigate(Routes.VIDEO_LIST) },
                 onOpenWebsite = { navController.navigate(Routes.WEB_VIEW) },
                 onOpenMyVoice = { navController.navigate(Routes.WEB_MY_VOICE) },
-                onAdminUnlockRequested = { navController.navigate(Routes.ADMIN_PIN) }
+                onAdminUnlockRequested = { navController.navigate(Routes.ADMIN_PIN) },
+                institutionLabel = settings.institutionLabel
             )
         }
 
