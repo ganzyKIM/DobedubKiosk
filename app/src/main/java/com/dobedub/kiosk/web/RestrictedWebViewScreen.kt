@@ -64,17 +64,25 @@ private const val DESKTOP_USER_AGENT =
  *
  * 그래서 리더 전용 컨테이너 `.viewer-layout`의 높이만 `vh`로 강제한다(vh는 정상 동작).
  * - 홈/목록 페이지엔 `viewer-layout`이 없어(실측 count 0) 영향이 없다.
- * - 폭/transform/스크롤 좌표는 전혀 건드리지 않으므로 마이 보이스 재생(이미지·싱크 정상)과
- *   더빙 카운트다운 중앙정렬(translateX(-50%))에 영향이 없다.
+ * - 폭/스크롤 좌표는 건드리지 않으므로 마이 보이스 재생(이미지·싱크 정상)에 영향이 없다.
  * - SPA 라우팅이라 최초 페이지 로드 시 한 번 넣은 <style>이 이후 리더 진입에도 계속 적용된다.
+ *
+ * [더빙 카운트다운 중앙정렬 수정]
+ * 마이보이스 더빙의 3·2·1 카운트다운 숫자(SVG: images/myvoice/countdown-N.svg)는 Tailwind
+ * `-translate-x-1/2`(translateX(-50%))로 중앙정렬돼야 하는데, 이 WebView에서 해당 transform이
+ * 무효화되어(computed transform:none — Tailwind translate 커스텀 프로퍼티 미초기화 추정) 숫자가
+ * 자기 폭의 절반만큼 오른쪽으로 밀린다. 카운트다운 이미지에만 `left:50% + translateX(-50%)`를
+ * 강제해 정확히 중앙에 오도록 한다(실기기 CDP로 3·2·1 모두 중심오차 0 확인).
  */
 private const val READER_HEIGHT_FIX_JS = """
 (function(){
-  if (window.__dobedubDvhFix) return;
-  window.__dobedubDvhFix = true;
+  if (window.__dobedubReaderFix) return;
+  window.__dobedubReaderFix = true;
   var s = document.createElement('style');
-  s.id = '__dobedub_dvh_fix';
-  s.textContent = '[class*="viewer-layout"]{height:100vh !important;}';
+  s.id = '__dobedub_reader_fix';
+  s.textContent =
+    '[class*="viewer-layout"]{height:100vh !important;}' +
+    'img[src*="myvoice/countdown"]{left:50% !important;transform:translateX(-50%) !important;}';
   (document.head || document.documentElement).appendChild(s);
 })();
 """
