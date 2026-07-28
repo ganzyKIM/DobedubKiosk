@@ -80,100 +80,102 @@ fun HomeScreen(
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(HomeBgTop, HomeBgBottom)))
     ) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 40.dp)
-        ) {
-            // ── 헤더 + 액션 버튼(스크롤 상단에 고정 느낌으로 배치) ──
-            item {
-                Column(modifier = Modifier.padding(horizontal = 28.dp)) {
-                    Spacer(Modifier.height(28.dp))
-                    Text(
-                        text = "보이스툰 도서관",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = LabelNormal,
-                        modifier = Modifier.clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }
-                        ) {
-                            logoTapCount++
-                            if (logoTapCount >= HIDDEN_ADMIN_TAP_COUNT) {
-                                logoTapCount = 0
-                                onAdminUnlockRequested()
-                            }
+        Column(modifier = Modifier.fillMaxSize()) {
+            // ── 고정 영역: 헤더 + 액션 버튼 + 섹션 라벨(스크롤하지 않음) ──
+            Column(modifier = Modifier.padding(horizontal = 28.dp)) {
+                Spacer(Modifier.height(28.dp))
+                Text(
+                    text = "보이스툰 도서관",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = LabelNormal,
+                    modifier = Modifier.clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) {
+                        logoTapCount++
+                        if (logoTapCount >= HIDDEN_ADMIN_TAP_COUNT) {
+                            logoTapCount = 0
+                            onAdminUnlockRequested()
                         }
-                    )
-                    Text(
-                        text = if (institutionLabel.isNotBlank()) institutionLabel else "듣고 보고 말하고, 함께 만드는 웹툰",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = LabelSecondary,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-
-                    Spacer(Modifier.height(24.dp))
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        ActionCard(
-                            title = "동영상 보기",
-                            subtitle = "보이스툰 영상",
-                            icon = Icons.Filled.PlayCircle,
-                            accent = AccentVideo,
-                            modifier = Modifier.weight(1f),
-                            onClick = onOpenVideos
-                        )
-                        ActionCard(
-                            title = "도서관 웹사이트",
-                            subtitle = "보이스툰 감상",
-                            icon = Icons.Filled.Public,
-                            accent = AccentWeb,
-                            modifier = Modifier.weight(1f),
-                            onClick = onOpenWebsite
-                        )
-                        ActionCard(
-                            title = "마이보이스",
-                            subtitle = "내 목소리로",
-                            icon = Icons.Filled.Mic,
-                            accent = AccentVoice,
-                            modifier = Modifier.weight(1f),
-                            onClick = onOpenMyVoice
-                        )
                     }
+                )
+                Text(
+                    text = if (institutionLabel.isNotBlank()) institutionLabel else "듣고 보고 말하고, 함께 만드는 웹툰",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = LabelSecondary,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
 
-                    Spacer(Modifier.height(32.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            Modifier
-                                .size(width = 4.dp, height = 20.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(MaterialTheme.colorScheme.primary)
-                        )
-                        Spacer(Modifier.size(10.dp))
-                        Text(
-                            text = "이용 안내",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = LabelNormal
-                        )
-                    }
-                    Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(24.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    ActionCard(
+                        title = "동영상 보기",
+                        subtitle = "보이스툰 영상",
+                        icon = Icons.Filled.PlayCircle,
+                        accent = AccentVideo,
+                        modifier = Modifier.weight(1f),
+                        onClick = onOpenVideos
+                    )
+                    ActionCard(
+                        title = "도서관 웹사이트",
+                        subtitle = "보이스툰 감상",
+                        icon = Icons.Filled.Public,
+                        accent = AccentWeb,
+                        modifier = Modifier.weight(1f),
+                        onClick = onOpenWebsite
+                    )
+                    ActionCard(
+                        title = "마이보이스",
+                        subtitle = "내 목소리로",
+                        icon = Icons.Filled.Mic,
+                        accent = AccentVoice,
+                        modifier = Modifier.weight(1f),
+                        onClick = onOpenMyVoice
+                    )
                 }
+
+                Spacer(Modifier.height(32.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(width = 4.dp, height = 20.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(MaterialTheme.colorScheme.primary)
+                    )
+                    Spacer(Modifier.size(10.dp))
+                    Text(
+                        text = "이용 안내",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = LabelNormal
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
             }
 
-            // ── 이용안내 이미지(세로 타일) ──
-            items(MANUAL_TILES) { tile ->
-                val painter = painterResource(id = tile)
-                val intrinsic = painter.intrinsicSize
-                val ratio = if (intrinsic.height > 0f) intrinsic.width / intrinsic.height else 1000f / 839f
-                Image(
-                    painter = painter,
-                    contentDescription = null,
-                    contentScale = ContentScale.FillWidth,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp)
-                        .aspectRatio(ratio)
-                )
+            // ── 스크롤 영역: 이용안내 이미지(세로 타일)만 스크롤 ──
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentPadding = PaddingValues(bottom = 40.dp)
+            ) {
+                items(MANUAL_TILES) { tile ->
+                    val painter = painterResource(id = tile)
+                    val intrinsic = painter.intrinsicSize
+                    val ratio = if (intrinsic.height > 0f) intrinsic.width / intrinsic.height else 1000f / 839f
+                    Image(
+                        painter = painter,
+                        contentDescription = null,
+                        contentScale = ContentScale.FillWidth,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp)
+                            .aspectRatio(ratio)
+                    )
+                }
             }
         }
     }
