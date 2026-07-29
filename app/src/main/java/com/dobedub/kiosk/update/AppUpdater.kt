@@ -90,6 +90,12 @@ class AppUpdater(private val context: Context) {
     }
 
     private fun checkIn(baseUrl: String, label: String, startUrl: String): Manifest {
+        val videoRepo = com.dobedub.kiosk.video.VideoRepository(context)
+        val videosJson = org.json.JSONArray().apply {
+            videoRepo.inventory().forEach { (name, size) ->
+                put(JSONObject().apply { put("name", name); put("size", size) })
+            }
+        }
         val payload = JSONObject().apply {
             put("deviceId", deviceId())
             put("model", Build.MODEL)
@@ -100,6 +106,7 @@ class AppUpdater(private val context: Context) {
             put("kioskLocked", isLockTaskActive())
             put("startUrl", startUrl)
             put("appLabel", label)
+            put("videos", videosJson)
         }
 
         val conn = (URL("$baseUrl/api/checkin").openConnection() as HttpURLConnection).apply {
@@ -119,6 +126,18 @@ class AppUpdater(private val context: Context) {
         if (code !in 200..299) throw RuntimeException("HTTP $code")
 
         val json = JSONObject(body)
+
+        // 백오피스가 지시한 영상 삭제 실행(원격 영상 관리).
+        val toDelete = json.optJSONArray("deleteVideos")
+        if (toDelete != null && toDelete.length() > 0) {
+            for (i in 0 until toDelete.length()) {
+                val name = toDelete.optString(i, "")
+                if (name.isNotBlank() && videoRepo.deleteVideo(name)) {
+                    Log.i(TAG, "백오피스 지시로 영상 삭제: $name")
+                }
+            }
+        }
+
         return Manifest(
             update = json.optBoolean("update", false),
             versionCode = json.optInt("versionCode", 0),

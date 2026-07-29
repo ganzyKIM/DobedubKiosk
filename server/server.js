@@ -79,13 +79,17 @@ app.post('/api/checkin', (req, res) => {
       kioskLocked: !!b.kioskLocked,
       startUrl: b.startUrl,
       appLabel: b.appLabel,
+      videos: Array.isArray(b.videos) ? b.videos.slice(0, 200) : [],
       ip: req.ip
     });
   } catch (e) {
     console.error('checkin error', e);
     return res.status(500).json({ error: 'server error' });
   }
-  return res.json(manifestFor(req));
+  // 매니페스트(업데이트) + 이 기기의 영상 삭제 지시를 함께 응답.
+  const resp = manifestFor(req);
+  resp.deleteVideos = store.pendingVideoDeletes(b.deviceId.slice(0, 128));
+  return res.json(resp);
 });
 
 // 매니페스트 단독 조회(디버그/수동 확인용)
@@ -133,6 +137,9 @@ app.get('/dashboard', auth.requireAuth, (req, res) => {
     const key = `${d.version_code}`;
     if (!distMap.has(key)) distMap.set(key, { version_code: d.version_code, version_name: d.version_name, count: 0 });
     distMap.get(key).count++;
+    // 영상 인벤토리(JSON 파싱) + 삭제 대기 목록을 뷰에 넘긴다.
+    try { d.videoList = d.videos ? JSON.parse(d.videos) : []; } catch (e) { d.videoList = []; }
+    d.pendingDeletes = store.pendingVideoDeletes(d.device_id);
   }
   const versionDist = [...distMap.values()].sort((a, b) => (b.version_code || 0) - (a.version_code || 0));
   res.type('html').send(views.dashboardPage({
@@ -177,6 +184,13 @@ app.post('/device/label', auth.requireAuth, (req, res) => {
 
 app.post('/device/delete', auth.requireAuth, (req, res) => {
   if (req.body.deviceId) store.deleteDevice(req.body.deviceId);
+  res.redirect('/dashboard');
+});
+
+// 원격 영상 삭제 지시 큐잉(다음 체크인 때 기기가 삭제).
+app.post('/device/video/delete', auth.requireAuth, (req, res) => {
+  const { deviceId, filename } = req.body;
+  if (deviceId && filename) store.queueVideoDelete(String(deviceId), String(filename));
   res.redirect('/dashboard');
 });
 
