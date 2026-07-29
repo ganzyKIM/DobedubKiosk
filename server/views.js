@@ -104,6 +104,25 @@ function dashboardPage({ devices, release, stats }) {
       : '';
     const batt = Number.isFinite(d.battery) ? `${d.battery}%` : '-';
     const lock = d.kiosk_locked ? '🔒' : '🔓';
+
+    // 영상 목록 + 원격 삭제
+    const vids = Array.isArray(d.videoList) ? d.videoList : [];
+    const pending = new Set(d.pendingDeletes || []);
+    const vidRows = vids.map(v => `<div class="row" style="justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--line);">
+        <span class="small" style="word-break:break-all;">${esc(v.name)} <span class="muted">${fmtBytes(v.size)}</span></span>
+        ${pending.has(v.name)
+          ? '<span class="badge b-warn">삭제 대기</span>'
+          : `<form class="inline" method="post" action="/device/video/delete" onsubmit="return confirm('이 영상을 이 태블릿에서 삭제할까요?\\n다음 접속 시 기기에서 실제로 지워집니다.');">
+               <input type="hidden" name="deviceId" value="${esc(d.device_id)}">
+               <input type="hidden" name="filename" value="${esc(v.name)}">
+               <button class="btn ghost" type="submit" style="padding:3px 10px;">삭제</button>
+             </form>`}
+      </div>`).join('');
+    const videoCell = vids.length === 0
+      ? '<span class="muted small">없음</span>'
+      : `<details><summary style="cursor:pointer;">${vids.length}개${pending.size ? ` <span class="badge b-warn">대기 ${pending.size}</span>` : ''}</summary>
+           <div style="min-width:260px;margin-top:6px;">${vidRows}</div></details>`;
+
     return `<tr>
       <td><span class="dot" style="background:${dotColor}"></span>${esc(statusText)}</td>
       <td>
@@ -116,6 +135,7 @@ function dashboardPage({ devices, release, stats }) {
       <td>${esc(d.model || '-')}</td>
       <td>${esc(d.version_name || '?')} <span class="mono">${d.version_code == null ? '' : 'code ' + d.version_code}</span><br>${verBadge}</td>
       <td>${lock} ${batt}</td>
+      <td>${videoCell}</td>
       <td>${esc(relTime(d.last_seen))}<div class="mono">${d.checkin_count}회</div></td>
       <td class="right">
         <form class="inline" method="post" action="/device/delete" onsubmit="return confirm('이 기기 기록을 삭제할까요? (기기가 다시 체크인하면 재등록됩니다)');">
@@ -169,8 +189,8 @@ function dashboardPage({ devices, release, stats }) {
 
     <div class="card"><h2>기기 목록 <span class="muted small">(${devices.length}대)</span></h2>
       <div class="overflow"><table>
-        <thead><tr><th>상태</th><th>기기 / 기관</th><th>모델</th><th>버전</th><th>잠금·배터리</th><th>마지막 접속</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="7" class="center muted">아직 체크인한 기기가 없습니다.</td></tr>'}</tbody>
+        <thead><tr><th>상태</th><th>기기 / 기관</th><th>모델</th><th>버전</th><th>잠금·배터리</th><th>영상</th><th>마지막 접속</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="8" class="center muted">아직 체크인한 기기가 없습니다.</td></tr>'}</tbody>
       </table></div>
     </div>
   `);

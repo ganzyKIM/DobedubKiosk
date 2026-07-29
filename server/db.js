@@ -24,9 +24,19 @@ CREATE TABLE IF NOT EXISTS devices (
   start_url     TEXT,
   app_label     TEXT,                 -- 기관/도서관 이름 등(관리자가 기기에 설정한 라벨)
   ip            TEXT,                  -- 체크인 시 원격 IP
+  videos        TEXT,                  -- 기기에 든 영상 인벤토리 JSON: [{name,size}]
   first_seen    INTEGER NOT NULL,     -- epoch ms
   last_seen     INTEGER NOT NULL,     -- epoch ms
   checkin_count INTEGER NOT NULL DEFAULT 0
+);
+
+-- 기기별 영상 원격 삭제 대기열. 체크인 응답으로 내려보내고, 기기가 실제로 삭제해
+-- 다음 체크인에서 목록에 없으면 확정 처리한다.
+CREATE TABLE IF NOT EXISTS video_deletes (
+  device_id TEXT NOT NULL,
+  filename  TEXT NOT NULL,
+  queued_at INTEGER NOT NULL,
+  PRIMARY KEY (device_id, filename)
 );
 
 CREATE TABLE IF NOT EXISTS release_info (
@@ -51,11 +61,14 @@ CREATE TABLE IF NOT EXISTS checkins (
 CREATE INDEX IF NOT EXISTS idx_checkins_device ON checkins(device_id, at);
 `);
 
+// 기존 DB에 videos 컬럼이 없을 수 있으니 안전하게 추가(이미 있으면 무시).
+try { db.exec(`ALTER TABLE devices ADD COLUMN videos TEXT`); } catch (e) { /* already exists */ }
+
 const stmtUpsert = db.prepare(`
 INSERT INTO devices (device_id, model, serial, version_code, version_name, battery,
-                     kiosk_locked, start_url, app_label, ip, first_seen, last_seen, checkin_count)
+                     kiosk_locked, start_url, app_label, ip, videos, first_seen, last_seen, checkin_count)
 VALUES (@device_id, @model, @serial, @version_code, @version_name, @battery,
-        @kiosk_locked, @start_url, @app_label, @ip, @now, @now, 1)
+        @kiosk_locked, @start_url, @app_label, @ip, @videos, @now, @now, 1)
 ON CONFLICT(device_id) DO UPDATE SET
   model        = excluded.model,
   serial       = excluded.serial,
@@ -66,9 +79,23 @@ ON CONFLICT(device_id) DO UPDATE SET
   start_url    = excluded.start_url,
   app_label    = COALESCE(excluded.app_label, devices.app_label),
   ip           = excluded.ip,
+  videos       = excluded.videos,
   last_seen    = excluded.last_seen,
   checkin_count = devices.checkin_count + 1
 `);
+
+// 영상 삭제 대기열
+const stmtQueueDelete = db.prepare(
+  `INSERT OR IGNORE INTO video_deletes (device_id, filename, queued_at) VALUES (?, ?, ?)`
+);
+const stmtPendingDeletes = db.prepare(
+  `SELECT filename FROM video_deletes WHERE device_id = ?`
+);
+const stmtClearDelete = db.prepare(
+  `DELETE FROM video_deletes WHERE device_id = ? AND filename = ?`
+);
+function queueVideoDelete(deviceId, filename) { stmtQueueDelete.run(deviceId, filename, Date.now()); }
+function pendingVideoDeletes(deviceId) { return stmtPendingDeletes.all(deviceId).map(r => r.filename); }
 
 const stmtInsertCheckin = db.prepare(
   `INSERT INTO checkins (device_id, version_code, battery, at) VALUES (?, ?, ?, ?)`
@@ -76,6 +103,7 @@ const stmtInsertCheckin = db.prepare(
 
 function recordCheckin(d) {
   const now = Date.now();
+  const videos = Array.isArray(d.videos) ? d.videos : [];
   stmtUpsert.run({
     device_id: d.deviceId,
     model: d.model || null,
@@ -87,10 +115,17 @@ function recordCheckin(d) {
     start_url: d.startUrl || null,
     app_label: d.appLabel || null,
     ip: d.ip || null,
+    videos: JSON.stringify(videos),
     now
   });
   stmtInsertCheckin.run(d.deviceId, Number.isFinite(d.versionCode) ? d.versionCode : null,
     Number.isFinite(d.battery) ? d.battery : null, now);
+
+  // 삭제 확정 처리: 대기열에 있던 파일이 이제 기기 목록에 없으면 실제 삭제된 것 → 대기열에서 제거.
+  const names = new Set(videos.map(v => v && v.name));
+  for (const fn of pendingVideoDeletes(d.deviceId)) {
+    if (!names.has(fn)) stmtClearDelete.run(d.deviceId, fn);
+  }
 }
 
 const stmtAllDevices = db.prepare(`SELECT * FROM devices ORDER BY last_seen DESC`);
@@ -119,8 +154,10 @@ function setLabel(deviceId, label) { stmtSetLabel.run(label, deviceId); }
 
 const stmtDeleteDevice = db.prepare(`DELETE FROM devices WHERE device_id = ?`);
 const stmtDeleteCheckins = db.prepare(`DELETE FROM checkins WHERE device_id = ?`);
-function deleteDevice(deviceId) { stmtDeleteCheckins.run(deviceId); stmtDeleteDevice.run(deviceId); }
+const stmtDeleteVideoQueue = db.prepare(`DELETE FROM video_deletes WHERE device_id = ?`);
+function deleteDevice(deviceId) { stmtDeleteCheckins.run(deviceId); stmtDeleteVideoQueue.run(deviceId); stmtDeleteDevice.run(deviceId); }
 
 module.exports = {
-  db, recordCheckin, allDevices, getRelease, setRelease, setLabel, deleteDevice, DATA_DIR
+  db, recordCheckin, allDevices, getRelease, setRelease, setLabel, deleteDevice, DATA_DIR,
+  queueVideoDelete, pendingVideoDeletes
 };
