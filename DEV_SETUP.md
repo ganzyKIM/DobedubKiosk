@@ -127,8 +127,48 @@ sdk.dir=C\:\\Android\\Sdk
   SPA 라우팅이라 페이지 이동 시 page id가 안 바뀌는 경우가 많으니 재진입 시마다 목록을
   다시 확인할 것.
 
-## 8. git 관리 밖에 있는 것들 (별도로 옮겨야 함)
+## 8. git 관리 밖에 있는 것들 (USB/보안 채널로 별도 이동)
 
-- 샘플 동영상(약 2.4GB, `../[두비덥 보이스툰] ...` 폴더) — 용량 때문에 git 제외.
-  코드만 개발할 땐 없어도 됨(동영상 목록이 비어 보일 뿐). 실제 재생 테스트 시 필요.
-- `local.properties`, 빌드 산출물(`app/build/`), APK — 모두 gitignore.
+`git clone`만으로는 부족하다. 아래는 리포에 없으니 직접 옮기거나 새로 만들어야 한다.
+
+| 대상 | 필수? | 어떻게 |
+|---|---|---|
+| `release-keystore.jks` + `keystore.properties` | **필수** | 기존 PC에서 복사. **분실 시 배포된 태블릿 업데이트 영구 불가** |
+| `local.properties` | 필수 | 새 PC에서 직접 작성(§3) — 복사하면 SDK 경로가 안 맞음 |
+| 샘플 동영상 (`../[두비덥 보이스툰] ...`, 약 3.4GB) | 재생 테스트 시 | USB 복사. 코드 개발만 할 땐 없어도 됨 |
+| Android System WebView APK | 태블릿 세팅 시 | 현재 폴더에 없음. 필요하면 APKMirror에서 다시 받아 리포 **상위 폴더**에 둔다 |
+| `userManual.png` 원본 | 매뉴얼 교체 시만 | 이미 타일(`app/src/main/res/drawable-nodpi/user_manual_*.png`)로 리포에 커밋됨 |
+| `server/data/` (기기 DB + 업로드 APK) | 운영 서버만 | 로컬 테스트용이면 안 옮겨도 됨(자동 생성) |
+| 빌드 산출물(`app/build/`, `*.apk`) | 아니오 | 새 PC에서 다시 빌드 |
+
+## 9. 함대 서버(백오피스) 실행에 필요한 것
+
+`server/`는 Android와 별개로 **Node.js 18+** 만 있으면 된다(파이썬 불필요).
+
+```powershell
+winget install -e --id OpenJS.NodeJS.LTS
+cd server
+npm install
+$env:ADMIN_PASSWORD="바꾸세요"; $env:SESSION_SECRET="랜덤문자열"; npm start
+# → http://localhost:8090/dashboard
+```
+
+`node_modules/`와 `data/`는 gitignore이므로 새 PC에서 `npm install`로 새로 만든다.
+운영 배포(공개 HTTPS)는 `server/README.md` 참고.
+
+## 10. 새 PC에서 Claude Code로 작업 이어가기
+
+대화 기록은 PC 간에 옮겨지지 않는다. 대신 **`CLAUDE.md`가 프로젝트 컨텍스트를 대신한다** —
+Claude Code가 세션 시작 시 자동으로 읽으므로, 리포를 clone한 폴더에서 `claude`를 실행하면
+프로젝트 구조·제약·과거에 실패한 시도까지 파악한 상태로 시작한다.
+
+```powershell
+winget install -e --id Anthropic.ClaudeCode   # 또는 npm i -g @anthropic-ai/claude-code
+cd <clone한 폴더>
+claude
+```
+
+첫 지시 예: "CLAUDE.md 읽고 현재 상태 파악해줘. 함대 서버를 실제로 배포하려고 한다."
+
+과거 결정의 근거가 더 필요하면 `git log`를 보면 된다 — 커밋 메시지에 증상·원인·검증 결과를
+남겨두었다.
