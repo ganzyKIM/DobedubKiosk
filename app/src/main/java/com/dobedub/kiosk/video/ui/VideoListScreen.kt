@@ -44,6 +44,8 @@ import com.dobedub.kiosk.ui.theme.KidGreenSoft
 import com.dobedub.kiosk.ui.theme.KidInk
 import com.dobedub.kiosk.video.VideoItem
 import com.dobedub.kiosk.video.VideoThumbnailLoader
+import compose.icons.TablerIcons
+import compose.icons.tablericons.X
 
 /**
  * 보이스툰 영상은 세로 2:3 비율이다(실측: 기기에 든 영상의 첫 프레임이 98×148).
@@ -63,7 +65,7 @@ fun VideoListScreen(
             .background(Brush.verticalGradient(listOf(KidBgTop, KidBgBottom)))
             .padding(horizontal = 24.dp)
     ) {
-        BackTopBar(label = "닫기", onBack = onBackToHome)
+        BackTopBar(label = "닫기", icon = TablerIcons.X, onBack = onBackToHome)
 
         // 제목 글자를 없앤 자리만큼 위 버튼과 아래 영상 카드 사이에 여백을 둔다.
         Spacer(Modifier.height(28.dp))
