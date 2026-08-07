@@ -52,7 +52,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -377,27 +376,6 @@ private fun DraggableMascot(parentW: Int, parentH: Int, modifier: Modifier = Mod
         }
         Spacer(Modifier.height(10.dp))
         Box(modifier = Modifier.size(430.dp), contentAlignment = Alignment.Center) {
-            // 발밑 그림자. 캐릭터 웹피는 배경이 투명이라 Modifier.shadow를 걸면 사각형
-            // 그림자가 생기므로, 대신 바닥에 부드러운 타원을 깔아 떠 있는 느낌을 준다.
-            Canvas(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 52.dp)
-                    .size(width = 200.dp, height = 44.dp)
-            ) {
-                // 원형 방사 그라디언트를 세로로 눌러 타원으로 만든다 — 가장자리가 부드럽다.
-                scale(scaleX = 1f, scaleY = size.height / size.width, pivot = center) {
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(Color.Black.copy(alpha = 0.22f), Color.Transparent),
-                            center = center,
-                            radius = size.width / 2f
-                        ),
-                        radius = size.width / 2f,
-                        center = center
-                    )
-                }
-            }
             AsyncImage(
                 model = imageRequest,
                 imageLoader = gifLoader,
