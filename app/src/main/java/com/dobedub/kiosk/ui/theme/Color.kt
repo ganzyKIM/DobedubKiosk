@@ -19,8 +19,8 @@ val ChipBorder = Color(0x6EACF537) // Primary 43%
 
 // ── 아동 교육앱 톤 팔레트 (엘리하이/핑크퐁 계열: 높은 채도 + 파스텔 배경 + 진한 그림자) ──
 // 카드마다 [진한색(그림자·테두리), 본색(면), 연한색(배경 얼룩)] 3단으로 입체감을 만든다.
-val KidBgTop = Color(0xFFEAF7FF)      // 하늘빛 파스텔 (상단)
-val KidBgBottom = Color(0xFFFFF6E3)   // 크림빛 (하단)
+val KidBgTop = Color(0xFF8FE0FF)      // 선명한 하늘빛 (상단)
+val KidBgBottom = Color(0xFFFFC9EC)   // 선명한 살구핑크빛 (하단)
 
 val KidGreen = Color(0xFF57C84D)      // 동영상
 val KidGreenDark = Color(0xFF3D9E35)
