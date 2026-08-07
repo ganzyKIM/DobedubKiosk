@@ -40,13 +40,10 @@ import com.dobedub.kiosk.ui.theme.KidGreen
 import com.dobedub.kiosk.ui.theme.KidGreenDark
 import com.dobedub.kiosk.ui.theme.KidPurple
 import com.dobedub.kiosk.ui.theme.KidPurpleDark
-import com.dobedub.kiosk.ui.theme.KidSunny
-import com.dobedub.kiosk.ui.theme.KidSunnyDark
 import com.dobedub.kiosk.ui.theme.LabelSecondary
 import com.dobedub.kiosk.ui.theme.LineNeutral
 import compose.icons.TablerIcons
 import compose.icons.tablericons.ArrowLeft
-import compose.icons.tablericons.Book
 import compose.icons.tablericons.Home2
 import compose.icons.tablericons.Refresh
 import kotlinx.coroutines.delay
@@ -138,7 +135,7 @@ fun RestrictedWebViewScreen(
             KidActionButton(
                 icon = TablerIcons.Home2,
                 contentDescription = "키오스크 홈으로 닫기",
-                label = "홈으로",
+                label = "닫기",
                 face = KidGreen,
                 shade = KidGreenDark,
                 onClick = {
@@ -167,18 +164,6 @@ fun RestrictedWebViewScreen(
                     onUserInteraction()
                     loadError = null
                     webViewRef?.reload()
-                }
-            )
-
-            KidActionButton(
-                icon = TablerIcons.Book,
-                contentDescription = "도서관 시작 화면",
-                face = KidSunny,
-                shade = KidSunnyDark,
-                onClick = {
-                    onUserInteraction()
-                    loadError = null
-                    webViewRef?.loadUrl(startUrl)
                 }
             )
 

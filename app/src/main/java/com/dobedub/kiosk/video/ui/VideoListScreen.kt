@@ -42,7 +42,6 @@ import com.dobedub.kiosk.ui.theme.KidBgBottom
 import com.dobedub.kiosk.ui.theme.KidBgTop
 import com.dobedub.kiosk.ui.theme.KidGreenSoft
 import com.dobedub.kiosk.ui.theme.KidInk
-import com.dobedub.kiosk.ui.theme.KidTitle
 import com.dobedub.kiosk.video.VideoItem
 import com.dobedub.kiosk.video.VideoThumbnailLoader
 
@@ -64,11 +63,10 @@ fun VideoListScreen(
             .background(Brush.verticalGradient(listOf(KidBgTop, KidBgBottom)))
             .padding(horizontal = 24.dp)
     ) {
-        BackTopBar(label = "홈으로", onBack = onBackToHome)
+        BackTopBar(label = "닫기", onBack = onBackToHome)
 
-        Text(text = "동영상 보기", fontSize = 34.sp, color = KidTitle)
-
-        Spacer(Modifier.height(16.dp))
+        // 제목 글자를 없앤 자리만큼 위 버튼과 아래 영상 카드 사이에 여백을 둔다.
+        Spacer(Modifier.height(28.dp))
 
         if (videos.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
