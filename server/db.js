@@ -6,7 +6,10 @@ const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');
 
-const DATA_DIR = path.join(__dirname, 'data');
+// 데이터 위치는 env 로 덮어쓸 수 있어야 한다. 로컬은 server/data 로 충분하지만,
+// 컨테이너(ECS)로 옮기면 컨테이너 파일시스템은 재배포마다 초기화되므로 반드시 외부
+// 볼륨이나 마운트 경로를 가리켜야 한다. 자세한 이전 절차는 README "보고팡 인프라 이전" 참조.
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const db = new Database(path.join(DATA_DIR, 'fleet.db'));

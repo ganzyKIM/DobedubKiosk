@@ -156,6 +156,28 @@ $env:ADMIN_PASSWORD="바꾸세요"; $env:SESSION_SECRET="랜덤문자열"; npm s
 `node_modules/`와 `data/`는 gitignore이므로 새 PC에서 `npm install`로 새로 만든다.
 운영 배포(공개 HTTPS)는 `server/README.md` 참고.
 
+### 폴더를 통째로 복사해 관리자 PC로 옮길 때
+
+git clone이 아니라 `DobedubKiosk` 폴더를 그대로 복사해 옮기는 경우, 아래만 주의하면 된다.
+
+1. **`server/node_modules`를 지우고 다시 설치한다.** `better-sqlite3`는 네이티브 모듈이라
+   Node 버전이나 CPU 아키텍처가 다르면 로드에 실패한다.
+   ```powershell
+   cd server; Remove-Item -Recurse -Force node_modules; npm ci
+   ```
+2. **`local.properties`는 다시 쓴다** — 복사본은 이전 PC의 Android SDK 경로를 가리킨다(§3).
+3. **`app/build/`는 지워도 된다** — 다시 빌드하면 생긴다.
+4. **`release-keystore.jks` / `keystore.properties`는 복사본에 그대로 따라온다.**
+   서명키라 편하긴 하지만 그만큼 유출에 주의할 것. 분실 시 배포된 태블릿 업데이트가 영구
+   불가라는 점은 그대로다(§8).
+5. **`server/data/`도 따라온다** — 기존 기기 이력과 업로드된 APK가 그대로 유지된다.
+   새로 시작하고 싶으면 지우면 자동 재생성된다.
+
+관리자 PC에서 24시간 상시 구동(Windows 서비스 등록), 그리고 **도서관에 나가 있는 태블릿이
+사내 PC에 접속하게 하는 방법(Cloudflare Tunnel)** 은 `server/README.md`의
+"관리자 PC에서 24시간 운영하기"에 정리해두었다. 태블릿은 앱 재설치 없이 관리자 화면에서
+서버 주소만 바꾸면 된다.
+
 ## 10. 새 PC에서 Claude Code로 작업 이어가기
 
 대화 기록은 PC 간에 옮겨지지 않는다. 대신 **`CLAUDE.md`가 프로젝트 컨텍스트를 대신한다** —
