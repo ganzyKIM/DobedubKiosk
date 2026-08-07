@@ -42,7 +42,7 @@ class VideoRepository(private val context: Context) {
      * 정확한 파일명만 대상으로 하고, 상위 경로/구분자가 포함된 이름은 거부한다.
      */
     fun deleteVideo(name: String): Boolean {
-        if (name.isBlank() || name.contains('/') || name.contains('\\') || name.contains("..")) return false
+        if (!isValidName(name)) return false
         val target = File(videosDir(), name)
         return try {
             target.exists() && target.parentFile == videosDir() && target.delete()
@@ -50,4 +50,27 @@ class VideoRepository(private val context: Context) {
             false
         }
     }
+
+    /**
+     * 백오피스 지시로 새 영상을 내려받아 저장한다. 최종 파일명과 같은 videos 폴더 안에
+     * `.downloading` 임시 파일로 받은 뒤 성공 시 이름을 바꾼다 — 같은 볼륨 안의 rename이라
+     * 대용량 파일도 복사 없이 원자적으로 끝나고, 중간에 실패해도 반쪽짜리 파일이
+     * 정식 이름으로 남지 않는다.
+     */
+    fun beginVideoDownload(name: String): File? {
+        if (!isValidName(name)) return null
+        return File(videosDir(), "$name.downloading")
+    }
+
+    fun commitVideoDownload(partial: File, name: String): Boolean {
+        if (!isValidName(name)) return false
+        return try {
+            partial.renameTo(File(videosDir(), name))
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun isValidName(name: String): Boolean =
+        name.isNotBlank() && !name.contains('/') && !name.contains('\\') && !name.contains("..")
 }

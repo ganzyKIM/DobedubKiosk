@@ -1,24 +1,32 @@
 # 두비덥 키오스크 함대 관리 서버
 
-배포된 태블릿들의 **접속 현황을 수집하고, 앱을 원격 일괄 업데이트**하는 Node.js + SQLite 서버.
-기기는 주기적으로 이 서버에 체크인하고, 응답으로 받은 최신 버전 정보를 보고 스스로 업데이트한다.
+배포된 태블릿들의 **접속 현황을 수집하고, 앱·영상을 원격 배포**하는 Node.js + SQLite 서버.
+기기는 주기적으로 이 서버에 체크인하고, 응답으로 받은 지시(업데이트/영상 배포/삭제)를 스스로 수행한다.
 
 ```
 기기(앱) ──POST /api/checkin──▶ 서버 ──(SQLite에 기록)
-기기(앱) ◀──최신버전 매니페스트── 서버
+기기(앱) ◀──매니페스트+지시(업데이트/영상 배포·삭제)── 서버
 기기(앱) ──GET /download/app.apk──▶ 서버 (새 버전이면 내려받아 무인 설치)
-관리자 ──▶ /dashboard (기기 목록·버전 현황·APK 업로드)
+기기(앱) ──GET /media/:id/download──▶ 서버 (배포 지시된 영상 다운로드)
+관리자 ──▶ /dashboard (기기 목록·버전 이력/롤백·영상 자료실·강제 업데이트 알림)
 ```
+
+기능 요약:
+- **APK 배포 + 이력/롤백** — 업로드마다 이력에 남고, 예전 버전으로 재업로드 없이 되돌릴 수 있다.
+- **강제 업데이트 알림** — 업데이트 안 된 기기(개별 또는 전체)에 확인창 표시를 지시하면, 기기에서
+  사용자가 동의하는 즉시 설치된다(평소엔 홈 화면 유휴 시 조용히 자동 설치).
+- **영상 자료실 + 개별 배포** — 영상을 한 번 올려두고 기기별로 골라 내려보낸다. 대용량(수 GB) 대비
+  체크인 때마다 재확인하는 큐 방식이라 중간에 끊겨도 다음 체크인에서 이어 확인된다.
 
 ## 구성 요소
 
 | 파일 | 역할 |
 |---|---|
-| `server.js` | HTTP 라우팅 (체크인 API, APK 배포, 대시보드) |
-| `db.js` | SQLite 저장소 (기기 인벤토리, 현재 배포 버전) |
+| `server.js` | HTTP 라우팅 (체크인 API, APK/영상 배포, 대시보드) |
+| `db.js` | SQLite 저장소 (기기 인벤토리, 배포 버전 이력, 영상 자료실/배포 큐) |
 | `auth.js` | 공유 비밀번호 로그인 + HMAC 서명 쿠키 |
 | `views.js` | 대시보드/로그인 HTML |
-| `data/` | 런타임 데이터 (SQLite DB + 업로드된 APK) — git 제외 |
+| `data/` | 런타임 데이터 (SQLite DB + 업로드된 APK·영상) — git 제외 |
 
 ## 실행
 
@@ -96,6 +104,11 @@ Windows 상시 구동은 [NSSM](https://nssm.cc/) 등으로 `node server.js` 를
 2. **릴리스 APK 빌드**: `gradlew assembleRelease` (키스토어 보유 PC에서 — 서명이 기존 기기와 같아야 함).
 3. 대시보드 → **"새 APK 업로드"** 에 APK + 같은 versionCode/versionName 입력 → 업로드.
 4. 기기들이 다음 체크인(최대 30분, 재부팅 시 즉시) 때 자동으로 내려받아 무인 설치.
+5. (선택) 빨리 반영하고 싶으면 대시보드 "업데이트 필요 기기에 알림 보내기"로 확인창을 강제로 띄운다.
+   기기 쪽에서 확인을 누르면 그 즉시 설치되고, 홈 화면에 있지 않으면 유휴 상태가 될 때까지 대기한다.
+
+문제가 생기면 "배포 이력" 카드에서 이전 버전 행의 **"이 버전으로 롤백"**을 누른다. 예전 APK 파일이
+그대로 있으므로 재업로드가 필요 없다(파일이 지워졌다면 재업로드부터 다시 해야 한다).
 
 > **체크인 주기는 앱과 서버 양쪽에 있다.** 앱 `MainActivity.UPDATE_CHECK_INTERVAL_MS` 와
 > 서버 `server.js` 의 `CHECKIN_INTERVAL_MS` 는 항상 같은 값이어야 한다. 대시보드의
@@ -106,10 +119,18 @@ Windows 상시 구동은 [NSSM](https://nssm.cc/) 등으로 `node server.js` 를
 
 ## API 요약
 
-- `POST /api/checkin` — body `{deviceId, model, versionCode, versionName, battery, kioskLocked, startUrl, appLabel}`.
-  응답 `{update, versionCode, versionName, apkUrl, sha256, size}`.
-- `GET /api/latest` — 현재 매니페스트(디버그용).
-- `GET /download/app.apk` — 현재 배포 APK.
+- `POST /api/checkin` — body `{deviceId, model, versionCode, versionName, battery, kioskLocked, startUrl, appLabel, videos}`.
+  응답 `{update, versionCode, versionName, apkUrl, sha256, size, promptUpdate, deleteVideos, pushVideos}`.
+  - `promptUpdate: true` — 관리자가 이 기기에 확인창 요청을 걸어뒀다는 뜻(§강제 업데이트 알림).
+  - `deleteVideos: string[]` — 기기가 삭제해야 할 영상 파일명 목록.
+  - `pushVideos: {name,url,sha256,size}[]` — 기기가 내려받아야 할 영상 목록.
+- `GET /api/latest` — 현재 매니페스트(디버그용, 기기 컨텍스트가 없어 `promptUpdate`는 항상 false).
+- `GET /download/app.apk` — 현재 활성 배포 APK.
+- `GET /media/:id/download` — 영상 자료실 파일(공개, Range 지원 — 대용량 이어받기 가능).
+
+대시보드 폼이 호출하는 관리용 라우트(로그인 필요): `/release/upload`, `/release/rollback`,
+`/release/notify-outdated`, `/device/update-prompt`, `/device/label`, `/device/delete`,
+`/device/video/delete`, `/media/upload`, `/media/push`, `/media/push/cancel`, `/media/delete`.
 
 ## 관리자 PC에서 24시간 운영하기 (현재 방식)
 
@@ -183,10 +204,11 @@ docker build --platform linux/arm64 -t dobedub-kiosk-fleet:local server/
    (`recordCheckin`/`allDevices`/`getRelease`/…)만 쓰므로 영향이 없다.
    덤으로 `better-sqlite3`(네이티브 모듈, alpine musl 컴파일 필요) 의존성이 사라진다.
 
-2. **APK 저장·배포 → S3(+CloudFront).** 지금은 APK를 컨테이너 로컬(`data/apk/`)에 두고
-   앱 서버가 직접 전송한다. 운영 ECS는 **vCPU 2 / RAM 8GB 한 대로 보고팡 API 전체**를
-   돌리므로, 46MB짜리 APK를 태블릿 수십 대가 동시에 받으면 그 대역폭을 서비스와 나눠 쓴다.
-   S3에 올리고 presigned URL을 매니페스트의 `apkUrl`로 내려보내면 앱 서버를 거치지 않는다.
+2. **APK/영상 저장·배포 → S3(+CloudFront).** 지금은 컨테이너 로컬(`data/apk/`, `data/videos/`)에
+   두고 앱 서버가 직접 전송한다. 운영 ECS는 **vCPU 2 / RAM 8GB 한 대로 보고팡 API 전체**를
+   돌리므로, 46MB APK는 물론 수 GB짜리 영상을 태블릿 여러 대가 동시에 받으면 그 대역폭을
+   서비스와 나눠 쓴다. 영상은 특히 크기 때문에 영향이 더 크다. S3에 올리고 presigned URL을
+   `apkUrl`/`pushVideos[].url`로 내려보내면 앱 서버를 거치지 않는다.
 
 3. **도메인 규칙 확정.** 앱 기본값은 `https://kiosk.dobedub.com`인데, 사내 관례는
    이용자 화면이 `*.dobedub.com`, API가 `back.vogopang.com` 계열이다. 이 서버는
