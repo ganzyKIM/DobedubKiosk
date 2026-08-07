@@ -101,6 +101,20 @@ app.post('/api/checkin', (req, res) => {
   return res.json(resp);
 });
 
+// 헬스체크. 보고팡 백엔드 규약과 동일하게 GET /health 가 200 "ok" 를 반환한다
+// (ECS 컨테이너 헬스체크: 30초 간격, timeout 5s, 재시도 3). 인증 없이 열어둔다.
+// DB를 실제로 한 번 두드려본다 — 프로세스만 살아있고 저장소가 죽은 상태를
+// "정상"으로 보고하면 헬스체크가 거짓말을 하게 된다.
+app.get('/health', (req, res) => {
+  try {
+    store.db.prepare('SELECT 1').get();
+    res.type('text').send('ok');
+  } catch (e) {
+    console.error('health check failed', e);
+    res.status(503).type('text').send('db unavailable');
+  }
+});
+
 // 매니페스트 단독 조회(디버그/수동 확인용)
 app.get('/api/latest', (req, res) => res.json(manifestFor(req)));
 
@@ -218,8 +232,30 @@ app.post('/device/video/delete', auth.requireAuth, (req, res) => {
   res.redirect('/dashboard');
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`[두비덥 함대관리] http://localhost:${PORT}  (대시보드: /dashboard)`);
   if (!process.env.ADMIN_PASSWORD) console.log('  ⚠ ADMIN_PASSWORD 미설정 — 기본값 "dobedub" 사용 중. 운영 시 반드시 설정하세요.');
   if (!process.env.SESSION_SECRET) console.log('  ⚠ SESSION_SECRET 미설정 — 재시작 시 로그인 세션이 만료됩니다.');
 });
+
+// 종료 신호를 받으면 처리 중인 요청을 끝내고 SQLite 를 정상 종료한다.
+// 로컬(관리자 PC 재부팅·서비스 재시작)에서는 WAL 파일 손상을 막고,
+// 나중에 ECS 롤링 업데이트로 옮겼을 때는 SIGTERM 후 강제 종료되기 전에
+// 진행 중인 체크인/APK 다운로드가 끊기지 않게 한다.
+let shuttingDown = false;
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[두비덥 함대관리] ${signal} 수신 — 종료 중...`);
+  server.close(() => {
+    try { store.db.close(); } catch (e) { console.error('db close 실패', e); }
+    console.log('[두비덥 함대관리] 정상 종료');
+    process.exit(0);
+  });
+  // 열린 연결이 안 닫혀도 무한 대기하지 않는다.
+  setTimeout(() => {
+    console.error('[두비덥 함대관리] 정상 종료 시간 초과 — 강제 종료');
+    process.exit(1);
+  }, 10000).unref();
+}
+for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => shutdown(sig));

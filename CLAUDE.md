@@ -86,9 +86,27 @@ WebView 업데이트 → APK 설치 → Device Owner → 블로트웨어 정리 
 | `server/README.md` | 함대 서버 실행·배포·API |
 | `기획문서.md` | 최초 기획 배경 |
 
-## 현재 상태 (2026-07-31)
+## 현재 상태 (2026-08-07)
 
-- 앱 `versionCode=2` / `versionName=1.1`
-- 함대 서버 **아직 미배포**. 앱 기본 주소는 `https://kiosk.dobedub.com`(미가동).
+- 앱 `versionCode=3` / `versionName=1.2`
+- 홈·동영상 화면은 아동 교육앱 톤으로 리디자인됨(Jua 폰트, Tabler 아이콘,
+  하늘→연두 그라데이션, 드래그 가능한 마스코트 "빠삐뿌").
+- 기기 체크인 주기 **30분**. 대시보드의 온라인/오프라인 임계값은 이 주기에서 파생되므로
+  `MainActivity.UPDATE_CHECK_INTERVAL_MS` 와 `server/server.js` 의 `CHECKIN_INTERVAL_MS` 를
+  **항상 같이** 바꿀 것(어긋나면 정상 기기가 "대기"로 표시됨).
+- 함대 서버 **아직 미배포**. 당분간 상시 켜진 관리자 PC(웍스메일 자동화 PC)에서 로컬 운영 예정.
+  앱 기본 주소는 `https://kiosk.dobedub.com`(미가동)이지만 **서버 주소는 런타임 설정값**이라
+  관리자 화면(로고 5번 탭 → 업데이트)에서 바꾸면 되고 재설치가 필요 없다.
   로컬 검증은 `-PfleetServerUrl=http://localhost:8090` + `adb reverse tcp:8090 tcp:8090`.
-- 백오피스에는 그 서버로 체크인한 기기만 뜬다(현재 로컬 서버엔 1대만 체크인됨).
+- 백오피스에는 그 서버로 체크인한 기기만 뜬다.
+
+### 사내 보고팡 인프라 이전 (예정)
+
+사내 백엔드는 **ECS on EC2(arm64) + ECR + RDS MariaDB + S3/CloudFront**, CI는 GitHub Actions,
+시크릿은 AWS Secrets Manager. 이전 대비 사전 작업은 이미 해뒀다 —
+`GET /health`, `Dockerfile`(node:22-alpine 멀티스테이지), SIGTERM graceful shutdown,
+설정 전면 env화(`DATA_DIR` 포함).
+
+**이전 시점에 반드시 바꿔야 하는 것**은 ① SQLite → RDS(컨테이너는 재배포마다 디스크 초기화),
+② APK 저장·전송 → S3/CloudFront(운영 ECS가 vCPU2/RAM8GB 한 대라 대용량 전송이 서비스와 경합).
+상세 체크리스트와 협조 필요 항목은 `server/README.md` "보고팡 인프라(AWS)로 이전할 때" 참조.
