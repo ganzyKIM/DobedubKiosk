@@ -38,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -53,6 +54,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -63,6 +65,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.ImageLoader
 import coil.compose.AsyncImage
+import coil.compose.AsyncImagePainter
 import coil.decode.ImageDecoderDecoder
 import coil.request.ImageRequest
 import com.dobedub.kiosk.R
@@ -303,7 +306,7 @@ private fun KidCard(
  * 캐릭터는 `res/drawable/character_*.webp` 로 교체/추가한다 — Coil의 ImageDecoderDecoder가
  * 움직이는 WebP를 그대로 애니메이션 재생한다.
  *
- * 터치/드래그 히트 영역은 캐릭터 이미지(330dp)보다 훨씬 작은 원(180dp)으로 좁혀, 웹피의
+ * 터치/드래그 히트 영역은 캐릭터 이미지(430dp)보다 훨씬 작은 원(234dp)으로 좁혀, 웹피의
  * 투명 여백이 아니라 실제 캐릭터 몸통을 만졌을 때만 반응하게 한다.
  *
  * ponytail: 위치·표정은 세션 메모리에만 둔다. 재부팅 시 기본값으로 돌아가는 편이 키오스크엔
@@ -349,6 +352,10 @@ private fun DraggableMascot(parentW: Int, parentH: Int, modifier: Modifier = Mod
         ImageRequest.Builder(context).data(CHARACTER_IMAGES[charIndex]).build()
     }
 
+    // 움짤 드로어블 참조: 터치/드래그 중엔 정지시키고 손을 떼면 이어서 재생해, 위치가
+    // 바뀌는 매 프레임에 애니메이션 프레임까지 같이 바뀌며 생기는 "덜덜거림"을 줄인다.
+    var animatedDrawable by remember { mutableStateOf<android.graphics.drawable.Drawable?>(null) }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
@@ -358,19 +365,22 @@ private fun DraggableMascot(parentW: Int, parentH: Int, modifier: Modifier = Mod
     ) {
         Box(
             Modifier
-                .widthIn(max = 340.dp)
-                .clip(RoundedCornerShape(40.dp))
+                .widthIn(max = 440.dp)
+                .clip(RoundedCornerShape(52.dp))
                 .background(KidBubble)
-                .padding(horizontal = 26.dp, vertical = 18.dp)
+                .padding(horizontal = 34.dp, vertical = 24.dp)
         ) {
-            Text(BUBBLE_LINES[lineIndex], fontSize = 22.sp, color = KidInk, textAlign = TextAlign.Center)
+            Text(BUBBLE_LINES[lineIndex], fontSize = 28.sp, color = KidInk, textAlign = TextAlign.Center)
         }
-        Spacer(Modifier.height(8.dp))
-        Box(modifier = Modifier.size(330.dp), contentAlignment = Alignment.Center) {
+        Spacer(Modifier.height(10.dp))
+        Box(modifier = Modifier.size(430.dp), contentAlignment = Alignment.Center) {
             AsyncImage(
                 model = imageRequest,
                 imageLoader = gifLoader,
                 contentDescription = "빠삐뿌",
+                onState = { state ->
+                    animatedDrawable = (state as? AsyncImagePainter.State.Success)?.result?.drawable
+                },
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
@@ -382,35 +392,52 @@ private fun DraggableMascot(parentW: Int, parentH: Int, modifier: Modifier = Mod
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .size(180.dp)
+                    .size(234.dp)
                     // 드래그와 탭을 한 제스처 블록에서 판별한다: 이동거리가 터치슬롭을 넘으면
                     // 드래그로 전환하고, 넘기지 않고 손을 떼면 탭으로 본다. (별도 pointerInput
                     // 2개로 나누면 drag 디텍터가 down 이벤트를 선점해 tap 이 실기기에서 씹혔음)
                     .pointerInput(Unit) {
                         awaitEachGesture {
                             val down = awaitFirstDown()
+                            (animatedDrawable as? android.graphics.drawable.Animatable)?.stop()
+                            // 직전 탭의 바운스/위글 스프링이 아직 정착 중일 때 곧바로 드래그를
+                            // 시작하면, 드래그로 인한 위치 이동에 스프링의 잔여 진동(스케일·회전)이
+                            // 겹쳐 보여 "떨림"처럼 보일 수 있다 — 새 터치 시작 시 즉시 정지시킨다.
+                            scope.launch { bounce.snapTo(1f) }
+                            scope.launch { wiggle.snapTo(0f) }
                             var dragging = false
-                            // 프레임워크의 change.positionChange()(직전 이벤트 대비 델타)는
-                            // 실기기에서 첫 이벤트에 이상값을 준 적이 있어(단순 탭인데 드래그로
-                            // 오판), 다운 지점 기준 절대 변위를 우리가 직접 추적한다.
-                            var lastPos = down.position
                             do {
                                 val event = awaitPointerEvent()
                                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
                                 if (!dragging) {
+                                    // 아직 드래그 전이라 노드가 움직이지 않았으므로 down.position과
+                                    // change.position은 같은 좌표계 — 절대 변위로 판정해도 안전하다.
                                     val totalDisplacement = change.position - down.position
-                                    if (totalDisplacement.getDistance() > viewConfiguration.touchSlop) dragging = true
+                                    if (totalDisplacement.getDistance() > viewConfiguration.touchSlop) {
+                                        // 임계값을 막 넘은 프레임의 이동량은 버린다. 손떨림으로
+                                        // 슬롭을 살짝 넘겼을 때 그 변위만큼 캐릭터가 순간이동하는 걸
+                                        // 막고, 다음 프레임부터의 실제 이동만 반영한다.
+                                        dragging = true
+                                        change.consume()
+                                        continue
+                                    }
                                 }
                                 if (dragging) {
                                     change.consume()
-                                    val delta = change.position - lastPos
+                                    // 반드시 positionChange()를 쓸 것. change.position은 이 노드의
+                                    // "로컬" 좌표라, 직접 저장해둔 이전 위치와 빼면 그 사이 노드가
+                                    // 이동한 양이 반대 부호로 섞여 들어간다 — 이동/취소가 매 프레임
+                                    // 번갈아 일어나며 덜덜 떨리고 실제 속도도 손가락의 절반이 된다.
+                                    // positionChange()는 Compose가 두 좌표를 같은 변환으로 맞춰
+                                    // 계산해주므로 순수 손가락 이동량만 나온다.
+                                    val delta = change.positionChange()
                                     offsetX = (offsetX + delta.x)
                                         .coerceIn(0f, (parentW - selfW).coerceAtLeast(0).toFloat())
                                     offsetY = (offsetY + delta.y)
                                         .coerceIn(-(parentH - selfH).coerceAtLeast(0).toFloat(), 0f)
                                 }
-                                lastPos = change.position
                             } while (event.changes.any { it.pressed })
+                            (animatedDrawable as? android.graphics.drawable.Animatable)?.start()
                             if (!dragging) react()
                         }
                     }
