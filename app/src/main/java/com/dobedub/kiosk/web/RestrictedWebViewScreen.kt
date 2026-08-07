@@ -68,11 +68,13 @@ private const val DESKTOP_USER_AGENT =
  * - SPA 라우팅이라 최초 페이지 로드 시 한 번 넣은 <style>이 이후 리더 진입에도 계속 적용된다.
  *
  * [더빙 카운트다운 중앙정렬 수정]
- * 마이보이스 더빙의 3·2·1 카운트다운 숫자(SVG: images/myvoice/countdown-N.svg)는 Tailwind
- * `-translate-x-1/2`(translateX(-50%))로 중앙정렬돼야 하는데, 이 WebView에서 해당 transform이
- * 무효화되어(computed transform:none — Tailwind translate 커스텀 프로퍼티 미초기화 추정) 숫자가
- * 자기 폭의 절반만큼 오른쪽으로 밀린다. 카운트다운 이미지에만 `left:50% + translateX(-50%)`를
- * 강제해 정확히 중앙에 오도록 한다(실기기 CDP로 3·2·1 모두 중심오차 0 확인).
+ * 마이보이스 더빙의 3·2·1 카운트다운 숫자(SVG: images/myvoice/countdown-N.svg)가 원(링) 중심에서
+ * 좌우로 밀리는 문제. 사이트는 Tailwind v4의 **독립 `translate` 속성**(`translate:-50%`)으로
+ * 중앙정렬하는데, 이는 `transform`과 별개 속성이라 둘 다 있으면 **합산**된다. 그래서 우리가
+ * `transform:translateX(-50%)`만 덮어쓰면 -100%가 되어 오히려 왼쪽으로 튄다(실측: 숫자 cx 292.5,
+ * 링·부모 cx 400). `translate:none`으로 사이트 몫을 지우고 transform 하나만 남겨 결정적으로
+ * 중앙에 고정한다 — 사이트가 나중에 translate를 빼도 동작이 같다.
+ * (실기기 CDP 실측: 숫자 cx 400 = 부모 400 = 링 399.5)
  */
 private const val READER_HEIGHT_FIX_JS = """
 (function(){
@@ -82,7 +84,7 @@ private const val READER_HEIGHT_FIX_JS = """
   s.id = '__dobedub_reader_fix';
   s.textContent =
     '[class*="viewer-layout"]{height:100vh !important;}' +
-    'img[src*="myvoice/countdown"]{left:50% !important;transform:translateX(-50%) !important;}';
+    'img[src*="myvoice/countdown"]{left:50% !important;translate:none !important;transform:translateX(-50%) !important;}';
   (document.head || document.documentElement).appendChild(s);
 })();
 """

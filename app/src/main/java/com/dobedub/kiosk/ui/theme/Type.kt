@@ -2,13 +2,21 @@ package com.dobedub.kiosk.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import com.dobedub.kiosk.R
 
-// Pretendard가 번들되지 않은 경우 시스템 기본 SansSerif로 대체된다.
-// TODO: app/src/main/res/font/ 에 Pretendard 폰트 파일을 추가하고 FontFamily로 교체할 것
-val PretendardFamily = FontFamily.SansSerif
+/**
+ * 아동용 둥근 한글 서체 **Jua(주아체)** — Google Fonts, SIL OFL(상업적 사용 가능).
+ * 굵고 동글동글해 어린이 교육 앱 톤에 맞고, 멀리서도 잘 읽혀 키오스크에 적합하다.
+ * 단일 굵기(Regular)라 위계는 크기·색으로 만든다.
+ */
+val JuaFamily = FontFamily(Font(R.font.jua_regular))
+
+// 기존 코드 호환용 별칭(본문/보조 라벨도 같은 서체로 통일).
+val PretendardFamily = JuaFamily
 
 // 피그마 토큰: Body2/Normal-Medium (칩, 본문)
 val Body2Medium = TextStyle(

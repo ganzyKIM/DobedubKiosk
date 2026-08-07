@@ -17,6 +17,28 @@ val LabelSecondary = Color(0xFF70737C)
 val ChipTintBackground = Color(0x0DACF537) // Primary 5%
 val ChipBorder = Color(0x6EACF537) // Primary 43%
 
+// ── 아동 교육앱 톤 팔레트 (엘리하이/핑크퐁 계열: 높은 채도 + 파스텔 배경 + 진한 그림자) ──
+// 카드마다 [진한색(그림자·테두리), 본색(면), 연한색(배경 얼룩)] 3단으로 입체감을 만든다.
+val KidBgTop = Color(0xFFEAF7FF)      // 하늘빛 파스텔 (상단)
+val KidBgBottom = Color(0xFFFFF6E3)   // 크림빛 (하단)
+
+val KidGreen = Color(0xFF57C84D)      // 동영상
+val KidGreenDark = Color(0xFF3D9E35)
+val KidGreenSoft = Color(0xFFDCF5D8)
+
+val KidBlue = Color(0xFF3AA8F0)       // 도서관 웹사이트
+val KidBlueDark = Color(0xFF2382C4)
+val KidBlueSoft = Color(0xFFD7EEFD)
+
+val KidPurple = Color(0xFF9B6BFF)     // 마이보이스
+val KidPurpleDark = Color(0xFF7647D6)
+val KidPurpleSoft = Color(0xFFE9E0FF)
+
+val KidInk = Color(0xFF3A3226)        // 본문 글자(순검정 대신 따뜻한 갈색빛)
+val KidInkSoft = Color(0xFF8A8172)
+val KidBubble = Color(0xFFFFFFFF)     // 말풍선 면
+val KidSunny = Color(0xFFFFC93C)      // 포인트(별·강조)
+
 // 모던 키오스크 UI 보조 토큰 (홈 재설계)
 val HomeBgTop = Color(0xFFFFFFFF)      // 상단 배경(흰색)
 val HomeBgBottom = Color(0xFFF1F8E4)   // 하단 배경(아주 연한 민트)
