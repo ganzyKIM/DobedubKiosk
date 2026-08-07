@@ -19,10 +19,20 @@ Lenovo TB-J606F 태블릿을 **도서관 납품용 키오스크**로 잠그는 A
 
 - **잠금**: Device Owner + Lock Task. `KioskManager`가 담당. `DISALLOW_DEBUGGING_FEATURES`는
   일부러 제외(유지보수용 adb 유지).
-- **원격 관리**: `server/` (Node.js + SQLite). 앱이 6시간마다 체크인 → 서버가 최신 APK
-  매니페스트 + 영상 삭제 지시를 응답. 백오피스 대시보드 `/dashboard`(공유 비밀번호).
+- **원격 관리**: `server/` (Node.js + SQLite). 앱이 **30분마다** 체크인 → 서버가 최신 APK
+  매니페스트 + 영상 삭제/배포 지시 + (요청 시) 강제 업데이트 알림 지시를 응답.
+  백오피스 대시보드 `/dashboard`(공유 비밀번호) — 기기 현황, 배포 버전 이력/롤백,
+  영상 자료실(업로드 후 기기별 배포), 기기별/전체 강제 업데이트 알림.
 - **무인 업데이트**: Device Owner라 `PackageInstaller`로 사용자 확인 없이 설치 가능.
-  홈 화면 유휴 상태일 때만 설치(재생 중 방해 금지).
+  평소엔 홈 화면 유휴 상태일 때만 조용히 자동 설치(재생 중 방해 금지). 관리자가
+  대시보드에서 "업데이트 알림 보내기"를 누르면 예외적으로 홈 화면에 확인창이 뜨고,
+  사용자가 동의해야 설치된다(`AppUpdater.Result.NeedsConfirmation`).
+- **원격 접속 경로**: 앱의 `network_security_config.xml`이 평문 HTTP를 `dobedub.com`과
+  localhost 에만 허용한다. 즉 함대 서버 주소는 **HTTPS이거나 저 두 도메인**이어야 한다 —
+  사설 LAN IP(`http://192.168.x.x:8090`)는 애초에 앱이 접속을 차단한다. 도서관처럼
+  이 PC와 다른 망에 나가 있는 태블릿을 관리하려면 공인 HTTPS 주소가 필수다. 당장은
+  `server/start-tunnel.ps1`(Cloudflare Quick Tunnel)로 임시 공인 주소를 만들어 쓰고,
+  실제 배포 전엔 고정 주소(`kiosk.dobedub.com`, named tunnel 또는 실서버)로 바꿔야 한다.
 
 ## 절대 잃으면 안 되는 것
 
@@ -84,21 +94,39 @@ WebView 업데이트 → APK 설치 → Device Owner → 블로트웨어 정리 
 | `납품_매뉴얼.md` | 납품 담당자용 태블릿 세팅 절차 |
 | `원격관리_업데이트.md` | 자동 업데이트 + 백오피스 개요, 서명 키 경고 |
 | `server/README.md` | 함대 서버 실행·배포·API |
+| `server/start-tunnel.ps1` | 공인 HTTPS 원격 접속 경로(Cloudflare Quick Tunnel) 실행 스크립트 |
 | `기획문서.md` | 최초 기획 배경 |
 
-## 현재 상태 (2026-08-07)
+## 현재 상태 (2026-08-07) — v1.0
 
-- 앱 `versionCode=3` / `versionName=1.2`
-- 홈·동영상 화면은 아동 교육앱 톤으로 리디자인됨(Jua 폰트, Tabler 아이콘,
-  하늘→연두 그라데이션, 드래그 가능한 마스코트 "빠삐뿌").
-- 기기 체크인 주기 **30분**. 대시보드의 온라인/오프라인 임계값은 이 주기에서 파생되므로
-  `MainActivity.UPDATE_CHECK_INTERVAL_MS` 와 `server/server.js` 의 `CHECKIN_INTERVAL_MS` 를
-  **항상 같이** 바꿀 것(어긋나면 정상 기기가 "대기"로 표시됨).
-- 함대 서버 **아직 미배포**. 당분간 상시 켜진 관리자 PC(웍스메일 자동화 PC)에서 로컬 운영 예정.
-  앱 기본 주소는 `https://kiosk.dobedub.com`(미가동)이지만 **서버 주소는 런타임 설정값**이라
-  관리자 화면(로고 5번 탭 → 업데이트)에서 바꾸면 되고 재설치가 필요 없다.
-  로컬 검증은 `-PfleetServerUrl=http://localhost:8090` + `adb reverse tcp:8090 tcp:8090`.
-- 백오피스에는 그 서버로 체크인한 기기만 뜬다.
+여기까지를 **1.0**으로 잡는다(`versionCode=5` / `versionName=1.0`). 아동용 리디자인 +
+마스코트 + 원격 관리(업데이트/영상/롤백/강제알림) 한 세트가 처음으로 다 맞물려 돌아가는
+지점이라 versionName을 여기서 다시 1.0으로 정리했다(versionCode는 계속 이어서 올라간다 —
+업데이트 트리거는 이 값 기준이므로 절대 되돌리면 안 됨).
+
+**홈/동영상 화면**
+- 아동 교육앱 톤 리디자인: Jua 폰트(본문), 학교안심둥근미소 Bold(로고 타이틀·버튼 글자,
+  더 굵고 눈에 띄어야 하는 곳만), Tabler 아이콘, 하늘→연두 그라데이션.
+- 드래그 가능한 마스코트 "빠삐뿌" — 터치마다 표정/대사 랜덤, 드래그 중 움짤 정지.
+  드래그 떨림은 좌표 계산 버그(로컬 좌표를 직접 델타 계산에 써서 이동/취소가 매 프레임
+  번갈아 발생)가 근본 원인이었고 `positionChange()`로 교체해 해결(§HomeScreen.kt 주석 참조).
+- 이용안내 이미지 스크롤 영역, 버튼 모두 44dp 라운드로 통일.
+- 동영상 목록: 2:3 세로 썸네일 꽉 채움, 카드 확대, 제목 전문 노출.
+- 상단바(동영상/웹뷰): Material 기본 대신 큰 색상 원형 버튼(KidActionButton), 닫기는 X 아이콘 통일.
+
+**원격 관리(함대 서버 + 앱)**
+- 체크인 주기 **30분**(대시보드 온라인/오프라인 임계값이 이 값에서 파생 —
+  `MainActivity.UPDATE_CHECK_INTERVAL_MS` 와 `server/server.js`의 `CHECKIN_INTERVAL_MS`는
+  항상 같이 바꿀 것).
+- 배포 버전은 이력으로 쌓이고(`releases` 테이블) 예전 버전으로 재업로드 없이 롤백 가능.
+- 영상 자료실: 업로드 후 기기별로 골라 배포, 대용량이라 체크인마다 재확인하는 큐 방식.
+- 강제 업데이트 알림: 관리자가 요청한 기기만 홈 화면에 확인창이 뜨고 동의해야 설치.
+- **원격 접속 경로가 실제로 해결됨**: 사설 IP는 앱의 network_security_config에 막혀
+  애초에 안 되고, `server/start-tunnel.ps1`(Cloudflare Quick Tunnel)로 공인 HTTPS 주소를
+  만들어 도서관처럼 다른 망에 있는 태블릿도 체크인 가능함을 실기기로 검증함
+  (재부팅 → 20초 후 자동 체크인 → 확인창 → 설치까지 전 과정 확인).
+- 함대 서버는 아직 상시 배포 전 — 당분간 상시 켜진 관리자 PC(웍스메일 자동화 PC)에서
+  로컬 실행 + Cloudflare Tunnel로 운영 예정. 실배포 시 고정 주소(`kiosk.dobedub.com`)로 전환.
 
 ### 사내 보고팡 인프라 이전 (예정)
 

@@ -26,6 +26,7 @@
 | `db.js` | SQLite 저장소 (기기 인벤토리, 배포 버전 이력, 영상 자료실/배포 큐) |
 | `auth.js` | 공유 비밀번호 로그인 + HMAC 서명 쿠키 |
 | `views.js` | 대시보드/로그인 HTML |
+| `start-tunnel.ps1` | 공인 HTTPS 원격 접속 경로 실행(Cloudflare Quick Tunnel) |
 | `data/` | 런타임 데이터 (SQLite DB + 업로드된 APK·영상) — git 제외 |
 
 ## 실행
@@ -138,19 +139,30 @@ Windows 상시 구동은 [NSSM](https://nssm.cc/) 등으로 `node server.js` 를
 
 ### ⚠ 먼저 해결해야 하는 것 — 태블릿이 이 PC에 닿을 수 있는가
 
-도서관에 나가 있는 태블릿은 **다른 네트워크에 있다.** 사내 LAN에만 있는 PC 주소
-(`http://192.168.x.x:8090`)로는 체크인을 보낼 수 없다. 같은 망에 있는 태블릿만 잡히고
-나머지는 대시보드에 영원히 안 나타난다.
+도서관에 나가 있는 태블릿은 **다른 네트워크에 있다.** 게다가 앱의
+`network_security_config.xml`이 평문 HTTP를 `dobedub.com`/`localhost`에만 허용하도록
+막아놔서, 사설 LAN IP(`http://192.168.x.x:8090`)는 **같은 Wi-Fi에 있어도 애초에 앱이
+접속을 차단한다** — 네트워크 문제가 아니라 앱 정책 문제라 방화벽을 열어도 소용없다.
+반드시 **공인 HTTPS 주소**가 있어야 한다.
 
 공인 IP·포트포워딩 없이 해결하려면 **Cloudflare Tunnel**이 가장 간단하다(무료).
+`winget install --id Cloudflare.cloudflared` 로 설치한 뒤:
 
-```bash
-cloudflared tunnel --url http://localhost:8090
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start-tunnel.ps1
+# 또는 직접: cloudflared tunnel --url http://localhost:8090
 ```
 
-고정 주소가 필요하면 named tunnel로 만들어 `kiosk.<도메인>` 에 붙인다. 주소가 정해지면
-태블릿마다 관리자 화면(로고 5번 탭 → 업데이트)에서 서버 주소를 그 주소로 바꾼다.
-**앱을 다시 설치할 필요는 없다** — 서버 주소는 런타임 설정값이다.
+출력에 뜨는 `https://<임의문자열>.trycloudflare.com` 주소를 태블릿마다 관리자 화면
+(로고 5번 탭 → PIN → 원격 관리/업데이트)에서 서버 주소에 입력한다.
+**앱을 다시 설치할 필요는 없다** — 서버 주소는 런타임 설정값이다. 실기기(HA1EHJC2)로
+재부팅 → 자동 체크인 → 강제 업데이트 확인창 표시까지 검증 완료.
+
+> ⚠ 이 명령이 만드는 것은 **빠른 터널(quick tunnel)**이라 cloudflared를 재시작할 때마다
+> 주소가 바뀐다. 태블릿이 이미 현장에 나간 뒤 주소가 바뀌면 원격으로 고칠 방법이 없다.
+> 실제 배포 전엔 반드시 **named tunnel**(고정 서브도메인) 또는 `kiosk.dobedub.com` DNS를
+> 이 서버로 향하게 하는 방식으로 전환할 것 — 후자는 앱 기본값이 이미 이 주소라 태블릿
+> 쪽 설정을 아예 안 건드려도 된다.
 
 ### 상시 구동 (Windows 서비스 등록)
 

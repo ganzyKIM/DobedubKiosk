@@ -75,6 +75,7 @@ import com.dobedub.kiosk.ui.theme.KidBgTop
 import com.dobedub.kiosk.ui.theme.KidBlue
 import com.dobedub.kiosk.ui.theme.KidBlueDark
 import com.dobedub.kiosk.ui.theme.KidBubble
+import com.dobedub.kiosk.ui.theme.DunggeunmisoBoldFamily
 import com.dobedub.kiosk.ui.theme.KidGreen
 import com.dobedub.kiosk.ui.theme.KidGreenDark
 import com.dobedub.kiosk.ui.theme.KidInk
@@ -170,6 +171,7 @@ fun HomeScreen(
                     Text(
                         text = "보이스툰 도서관",
                         fontSize = 30.sp,
+                        fontFamily = DunggeunmisoBoldFamily,
                         color = KidTitle,
                         modifier = Modifier.clickable(
                             indication = null,
@@ -199,9 +201,9 @@ fun HomeScreen(
                 Spacer(Modifier.height(20.dp))
             }
 
-            // ── 스크롤 영역: 이용안내 이미지만 ──
+            // ── 스크롤 영역: 이용안내 이미지만. 버튼(KidCard)과 같은 44dp 라운드로 통일 ──
             LazyColumn(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
+                modifier = Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(44.dp)),
                 contentPadding = PaddingValues(bottom = 40.dp)
             ) {
                 items(MANUAL_TILES) { tile ->
@@ -273,7 +275,14 @@ private fun KidCard(
                 Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(42.dp))
             }
             Spacer(Modifier.height(12.dp))
-            Text(label, fontSize = 22.sp, color = Color.White, textAlign = TextAlign.Center, maxLines = 1)
+            Text(
+                label,
+                fontSize = 28.sp,
+                fontFamily = DunggeunmisoBoldFamily,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                maxLines = 1
+            )
         }
         // 반짝이는 하이라이트: 카드의 좌상단 둥근 모서리와 같은 중심을 공유하되, 반지름을 살짝
         // 줄인 동심원 호로 그린다 — 테두리에 딱 붙지 않고 안쪽에 살짝 뜬 광택처럼 보인다.
