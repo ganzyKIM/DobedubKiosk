@@ -12,9 +12,14 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -55,6 +60,9 @@ class MainActivity : ComponentActivity() {
     private val updater by lazy { AppUpdater(applicationContext) }
 
     private var navController: NavHostController? = null
+    // 관리자가 "업데이트 알림 보내기"를 요청한 기기에서만 채워진다 — 평소엔 조용히
+    // 백그라운드로 자동 설치되고, 이 값이 있을 때만 화면에 확인창을 띄운다.
+    private var pendingUpdateConfirmation by mutableStateOf<AppUpdater.Manifest?>(null)
     private val idleHandler = Handler(Looper.getMainLooper())
     @Volatile private var idleTimeoutMillis = DEFAULT_IDLE_TIMEOUT_MINUTES * 60_000L
     @Volatile private var volumeMaxPercent = DEFAULT_VOLUME_MAX_PERCENT
@@ -115,6 +123,25 @@ class MainActivity : ComponentActivity() {
                             .align(Alignment.TopEnd)
                             .padding(top = 8.dp, end = 8.dp)
                     )
+
+                    pendingUpdateConfirmation?.let { manifest ->
+                        AlertDialog(
+                            onDismissRequest = { pendingUpdateConfirmation = null },
+                            title = { Text("새 업데이트가 있어요") },
+                            text = {
+                                Text("버전 ${manifest.versionName} (code ${manifest.versionCode})으로 업데이트할까요?\n적용하면 앱이 잠시 재시작됩니다.")
+                            },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    pendingUpdateConfirmation = null
+                                    lifecycleScope.launch { updater.installConfirmed(manifest) }
+                                }) { Text("지금 업데이트") }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { pendingUpdateConfirmation = null }) { Text("나중에") }
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -215,7 +242,10 @@ class MainActivity : ComponentActivity() {
             delay(UPDATE_INITIAL_DELAY_MS)
             while (true) {
                 try {
-                    updater.runOnce(canInstallNow = { navController?.currentDestination?.route == Routes.HOME })
+                    val result = updater.runOnce(canInstallNow = { navController?.currentDestination?.route == Routes.HOME })
+                    if (result is AppUpdater.Result.NeedsConfirmation) {
+                        pendingUpdateConfirmation = result.manifest
+                    }
                 } catch (_: Exception) {
                     // 네트워크 오류 등은 다음 주기에 재시도
                 }

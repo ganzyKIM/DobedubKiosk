@@ -11,6 +11,7 @@ import android.provider.Settings
 import android.util.Log
 import com.dobedub.kiosk.BuildConfig
 import com.dobedub.kiosk.data.KioskSettingsRepository
+import com.dobedub.kiosk.video.VideoRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -20,7 +21,9 @@ import java.net.URL
 import java.security.MessageDigest
 
 /**
- * 함대 관리 서버와 통신해 (1) 기기 상태를 체크인하고 (2) 새 버전이 있으면 조용히 설치한다.
+ * 함대 관리 서버와 통신해 (1) 기기 상태를 체크인하고 (2) 새 버전이 있으면 조용히(또는
+ * 관리자가 요청했다면 확인창을 띄운 뒤) 설치하고 (3) 백오피스가 지시한 영상 삭제/배포를
+ * 수행한다.
  *
  * 무인 설치는 이 앱이 **Device Owner** 이기 때문에 가능하다(PackageInstaller commit 시 사용자 확인창 없음).
  * 자기 자신을 덮어 설치하면 프로세스가 종료되지만, Device Owner 의 영속 HOME 설정 덕분에
@@ -29,6 +32,7 @@ import java.security.MessageDigest
 class AppUpdater(private val context: Context) {
 
     private val settings = KioskSettingsRepository(context)
+    private val videoRepo = VideoRepository(context)
 
     data class Manifest(
         val update: Boolean,
@@ -36,13 +40,17 @@ class AppUpdater(private val context: Context) {
         val versionName: String = "",
         val apkUrl: String = "",
         val sha256: String = "",
-        val size: Long = 0
+        val size: Long = 0,
+        /** 관리자가 이 기기에 "업데이트 하시겠어요?" 확인창을 요청했는지(백오피스 강제 알림). */
+        val promptUpdate: Boolean = false
     )
 
     sealed class Result {
         data class UpToDate(val serverVersion: Int) : Result()
         data class Updating(val toVersion: Int) : Result()
         data class Deferred(val toVersion: Int) : Result()   // 새 버전 있으나 지금 설치는 미룸(사용 중)
+        /** 관리자가 강제 알림을 요청한 새 버전 — 화면에 확인창을 띄워 사용자 동의를 받아야 한다. */
+        data class NeedsConfirmation(val manifest: Manifest) : Result()
         data class Failed(val reason: String) : Result()
         object NoServer : Result()
     }
@@ -73,24 +81,37 @@ class AppUpdater(private val context: Context) {
             return@withContext Result.Deferred(manifest.versionCode)
         }
 
-        Log.i(TAG, "새 버전 발견: code ${manifest.versionCode} (현재 ${BuildConfig.VERSION_CODE})")
-        return@withContext try {
-            val apk = downloadApk(manifest, baseUrl)
-            if (!verifySha256(apk, manifest.sha256)) {
-                apk.delete()
-                Result.Failed("APK 체크섬 불일치 — 설치 중단")
-            } else {
-                installApk(apk)
-                Result.Updating(manifest.versionCode)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "업데이트 실패", e)
-            Result.Failed("업데이트 실패: ${e.message}")
+        // 관리자가 이 기기에 강제 알림을 요청했다면 조용히 깔지 않고 화면에 확인창을 띄운다 —
+        // 사용자가 동의해야 installConfirmed()가 호출되어 실제 설치가 진행된다.
+        if (manifest.promptUpdate) {
+            Log.i(TAG, "관리자가 업데이트 확인창 요청 — code ${manifest.versionCode}")
+            return@withContext Result.NeedsConfirmation(manifest)
         }
+
+        Log.i(TAG, "새 버전 발견: code ${manifest.versionCode} (현재 ${BuildConfig.VERSION_CODE})")
+        return@withContext performInstall(manifest)
+    }
+
+    /** 확인창에서 사용자가 "지금 업데이트"를 눌렀을 때 호출 — 이미 받아둔 manifest로 바로 설치를 진행한다. */
+    suspend fun installConfirmed(manifest: Manifest): Result = withContext(Dispatchers.IO) {
+        performInstall(manifest)
+    }
+
+    private fun performInstall(manifest: Manifest): Result = try {
+        val apk = downloadApk(manifest)
+        if (!verifySha256(apk, manifest.sha256)) {
+            apk.delete()
+            Result.Failed("APK 체크섬 불일치 — 설치 중단")
+        } else {
+            installApk(apk)
+            Result.Updating(manifest.versionCode)
+        }
+    } catch (e: Exception) {
+        Log.e(TAG, "업데이트 실패", e)
+        Result.Failed("업데이트 실패: ${e.message}")
     }
 
     private fun checkIn(baseUrl: String, label: String, startUrl: String): Manifest {
-        val videoRepo = com.dobedub.kiosk.video.VideoRepository(context)
         val videosJson = org.json.JSONArray().apply {
             videoRepo.inventory().forEach { (name, size) ->
                 put(JSONObject().apply { put("name", name); put("size", size) })
@@ -129,11 +150,29 @@ class AppUpdater(private val context: Context) {
 
         // 백오피스가 지시한 영상 삭제 실행(원격 영상 관리).
         val toDelete = json.optJSONArray("deleteVideos")
-        if (toDelete != null && toDelete.length() > 0) {
+        if (toDelete != null) {
             for (i in 0 until toDelete.length()) {
                 val name = toDelete.optString(i, "")
                 if (name.isNotBlank() && videoRepo.deleteVideo(name)) {
                     Log.i(TAG, "백오피스 지시로 영상 삭제: $name")
+                }
+            }
+        }
+
+        // 백오피스가 지시한 영상 배포(다운로드) 실행. 파일 하나가 실패해도 나머지와
+        // 이어지는 버전 체크에 영향 없도록 항목별로 예외를 흡수한다 — 영상은 크기가
+        // 커서(수 GB) 실패 확률이 APK보다 높다.
+        val toPush = json.optJSONArray("pushVideos")
+        if (toPush != null) {
+            for (i in 0 until toPush.length()) {
+                val item = toPush.optJSONObject(i) ?: continue
+                val name = item.optString("name", "")
+                val url = item.optString("url", "")
+                if (name.isBlank() || url.isBlank()) continue
+                try {
+                    downloadVideo(url, name, item.optString("sha256", ""))
+                } catch (e: Exception) {
+                    Log.w(TAG, "영상 다운로드 실패($name): ${e.message}")
                 }
             }
         }
@@ -144,12 +183,44 @@ class AppUpdater(private val context: Context) {
             versionName = json.optString("versionName", ""),
             apkUrl = json.optString("apkUrl", ""),
             sha256 = json.optString("sha256", ""),
-            size = json.optLong("size", 0)
+            size = json.optLong("size", 0),
+            promptUpdate = json.optBoolean("promptUpdate", false)
         )
     }
 
-    private fun downloadApk(manifest: Manifest, baseUrl: String): File {
-        val url = manifest.apkUrl.ifBlank { "$baseUrl/download/app.apk" }
+    /** 이미 보유 중이면(=백오피스가 아직 확정 처리 전 재전송한 경우 등) 다시 받지 않는다. */
+    private fun downloadVideo(url: String, name: String, expectedSha256: String) {
+        if (videoRepo.inventory().any { it.first == name }) return
+
+        val partial = videoRepo.beginVideoDownload(name) ?: return
+        if (partial.exists()) partial.delete()
+
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15000
+            readTimeout = 60000
+            if (DEVICE_TOKEN.isNotBlank()) setRequestProperty("X-Kiosk-Token", DEVICE_TOKEN)
+        }
+        try {
+            val code = conn.responseCode
+            if (code !in 200..299) throw RuntimeException("영상 다운로드 HTTP $code")
+            conn.inputStream.use { input -> partial.outputStream().use { input.copyTo(it) } }
+        } finally {
+            conn.disconnect()
+        }
+
+        if (expectedSha256.isNotBlank() && !verifySha256(partial, expectedSha256)) {
+            partial.delete()
+            throw RuntimeException("영상 체크섬 불일치: $name")
+        }
+        if (!videoRepo.commitVideoDownload(partial, name)) {
+            partial.delete()
+            throw RuntimeException("영상 저장 실패: $name")
+        }
+        Log.i(TAG, "영상 다운로드 완료: $name")
+    }
+
+    private fun downloadApk(manifest: Manifest): File {
+        val url = manifest.apkUrl
         val out = File(context.cacheDir, "update-${manifest.versionCode}.apk")
         if (out.exists()) out.delete()
 

@@ -96,6 +96,15 @@ fun AdminUpdateScreen(viewModel: AdminViewModel, onBack: () -> Unit) {
                         is AppUpdater.Result.UpToDate -> "최신 상태입니다. (서버 버전 code ${result.serverVersion})"
                         is AppUpdater.Result.Updating -> "새 버전(code ${result.toVersion}) 설치를 시작합니다. 곧 앱이 재시작됩니다."
                         is AppUpdater.Result.Deferred -> "새 버전이 있습니다(code ${result.toVersion})."
+                        // 관리자가 이 화면에서 직접 버튼을 눌렀다는 것 자체가 이미 확인 의사이므로
+                        // 별도 확인창 없이 바로 설치한다(홈 화면에서만 뜨는 팝업은 원격 알림 전용).
+                        is AppUpdater.Result.NeedsConfirmation -> {
+                            when (val installed = updater.installConfirmed(result.manifest)) {
+                                is AppUpdater.Result.Updating -> "새 버전(code ${installed.toVersion}) 설치를 시작합니다. 곧 앱이 재시작됩니다."
+                                is AppUpdater.Result.Failed -> installed.reason
+                                else -> "업데이트 처리 중입니다."
+                            }
+                        }
                         is AppUpdater.Result.Failed -> result.reason
                         AppUpdater.Result.NoServer -> "서버 주소가 설정되지 않았습니다."
                     }

@@ -76,7 +76,7 @@ function loginPage(error) {
     </div>`);
 }
 
-function dashboardPage({ devices, release, stats, thresholds }) {
+function dashboardPage({ devices, release, releases, media, stats, thresholds }) {
   // 임계값은 반드시 server.js 에서 받아 쓴다 — 여기에 따로 박아두면 앱 체크인 주기가
   // 바뀌었을 때 서버 집계와 표시가 어긋난다(실제로 그래서 정상 기기가 "대기"로 보였다).
   const online = thresholds.onlineMs;
@@ -97,6 +97,10 @@ function dashboardPage({ devices, release, stats, thresholds }) {
     </div>`;
   }).join('') || '<p class="muted">아직 체크인한 기기가 없습니다.</p>';
 
+  const mediaOptions = media.map(m =>
+    `<option value="${m.id}">${esc(m.original_name)} (${fmtBytes(m.size)})</option>`
+  ).join('');
+
   const rows = devices.map(d => {
     const age = Date.now() - d.last_seen;
     let dotColor = 'var(--ok)', statusText = '온라인';
@@ -109,12 +113,23 @@ function dashboardPage({ devices, release, stats, thresholds }) {
     const batt = Number.isFinite(d.battery) ? `${d.battery}%` : '-';
     const lock = d.kiosk_locked ? '🔒' : '🔓';
 
-    // 영상 목록 + 원격 삭제
+    // 업데이트 알림: 이미 최신이면 버튼 자체가 필요 없다.
+    const updateCell = !release || isLatest
+      ? '<span class="muted small">-</span>'
+      : (d.update_prompt
+          ? '<span class="badge b-warn">🔔 알림 대기중</span>'
+          : `<form class="inline" method="post" action="/device/update-prompt">
+               <input type="hidden" name="deviceId" value="${esc(d.device_id)}">
+               <button class="btn ghost" type="submit" style="padding:3px 10px;">알림 보내기</button>
+             </form>`);
+
+    // 영상: 보유 목록(삭제/삭제대기) + 배포 대기 목록(취소) + 새로 보내기.
     const vids = Array.isArray(d.videoList) ? d.videoList : [];
-    const pending = new Set(d.pendingDeletes || []);
+    const pendingDel = new Set(d.pendingDeletes || []);
+    const pendingPush = d.pendingPushes || [];
     const vidRows = vids.map(v => `<div class="row" style="justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--line);">
         <span class="small" style="word-break:break-all;">${esc(v.name)} <span class="muted">${fmtBytes(v.size)}</span></span>
-        ${pending.has(v.name)
+        ${pendingDel.has(v.name)
           ? '<span class="badge b-warn">삭제 대기</span>'
           : `<form class="inline" method="post" action="/device/video/delete" onsubmit="return confirm('이 영상을 이 태블릿에서 삭제할까요?\\n다음 접속 시 기기에서 실제로 지워집니다.');">
                <input type="hidden" name="deviceId" value="${esc(d.device_id)}">
@@ -122,10 +137,28 @@ function dashboardPage({ devices, release, stats, thresholds }) {
                <button class="btn ghost" type="submit" style="padding:3px 10px;">삭제</button>
              </form>`}
       </div>`).join('');
-    const videoCell = vids.length === 0
-      ? '<span class="muted small">없음</span>'
-      : `<details><summary style="cursor:pointer;">${vids.length}개${pending.size ? ` <span class="badge b-warn">대기 ${pending.size}</span>` : ''}</summary>
-           <div style="min-width:260px;margin-top:6px;">${vidRows}</div></details>`;
+    const pushRows = pendingPush.map(p => `<div class="row" style="justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--line);">
+        <span class="small" style="word-break:break-all;">📥 ${esc(p.original_name)} <span class="muted">${fmtBytes(p.size)}</span></span>
+        <span class="row" style="gap:6px;">
+          <span class="badge b-warn">전송 대기</span>
+          <form class="inline" method="post" action="/media/push/cancel">
+            <input type="hidden" name="deviceId" value="${esc(d.device_id)}">
+            <input type="hidden" name="mediaId" value="${p.media_id}">
+            <button class="btn ghost" type="submit" style="padding:3px 10px;">취소</button>
+          </form>
+        </span>
+      </div>`).join('');
+    const sendForm = media.length === 0 ? '' : `
+      <form method="post" action="/media/push" class="row" style="margin-top:8px;gap:6px;">
+        <input type="hidden" name="deviceId" value="${esc(d.device_id)}">
+        <select name="mediaId" style="max-width:220px;">${mediaOptions}</select>
+        <button class="btn ghost" type="submit" style="padding:3px 10px;">이 기기로 보내기</button>
+      </form>`;
+    const totalBadgeParts = [];
+    if (pendingDel.size) totalBadgeParts.push(`<span class="badge b-warn">삭제대기 ${pendingDel.size}</span>`);
+    if (pendingPush.length) totalBadgeParts.push(`<span class="badge b-warn">수신대기 ${pendingPush.length}</span>`);
+    const videoCell = `<details><summary style="cursor:pointer;">${vids.length}개 ${totalBadgeParts.join(' ')}</summary>
+           <div style="min-width:280px;margin-top:6px;">${vidRows}${pushRows}${sendForm}</div></details>`;
 
     return `<tr>
       <td><span class="dot" style="background:${dotColor}"></span>${esc(statusText)}</td>
@@ -140,6 +173,7 @@ function dashboardPage({ devices, release, stats, thresholds }) {
       <td>${esc(d.version_name || '?')} <span class="mono">${d.version_code == null ? '' : 'code ' + d.version_code}</span><br>${verBadge}</td>
       <td>${lock} ${batt}</td>
       <td>${videoCell}</td>
+      <td>${updateCell}</td>
       <td>${esc(relTime(d.last_seen))}<div class="mono">${d.checkin_count}회</div></td>
       <td class="right">
         <form class="inline" method="post" action="/device/delete" onsubmit="return confirm('이 기기 기록을 삭제할까요? (기기가 다시 체크인하면 재등록됩니다)');">
@@ -150,6 +184,10 @@ function dashboardPage({ devices, release, stats, thresholds }) {
     </tr>`;
   }).join('');
 
+  const outdatedCount = release
+    ? devices.filter(d => d.version_code !== release.version_code).length
+    : 0;
+
   const rel = release ? `
     <div class="row" style="justify-content:space-between;">
       <div>
@@ -158,8 +196,26 @@ function dashboardPage({ devices, release, stats, thresholds }) {
         <div class="mono" style="word-break:break-all;">sha256: ${esc(release.sha256)}</div>
         ${release.notes ? `<div class="small" style="margin-top:6px;">${esc(release.notes)}</div>` : ''}
       </div>
-      <a class="btn ghost" href="/download/app.apk">APK 내려받기</a>
+      <div class="row" style="align-items:flex-start;">
+        <a class="btn ghost" href="/download/app.apk">APK 내려받기</a>
+        ${outdatedCount > 0 ? `
+          <form method="post" action="/release/notify-outdated" onsubmit="return confirm('업데이트가 안 된 기기 ${outdatedCount}대 전체에 업데이트 확인창을 띄우라고 지시할까요?\\n기기 쪽에서 확인을 누르면 바로 설치됩니다.');">
+            <button class="btn" type="submit">업데이트 필요 기기(${outdatedCount}대)에 알림 보내기</button>
+          </form>` : ''}
+      </div>
     </div>` : '<p class="muted">아직 배포된 APK가 없습니다. 아래에서 첫 버전을 업로드하세요.</p>';
+
+  const releaseHistoryRows = (releases || []).map(r => `<tr>
+      <td>${esc(r.version_name)} <span class="mono">code ${r.version_code}</span> ${r.active ? '<span class="badge b-ok">배포중</span>' : ''}</td>
+      <td class="small">${fmtBytes(r.size)}</td>
+      <td class="small">${esc(relTime(r.uploaded_at))}</td>
+      <td class="small" style="max-width:220px;">${esc(r.notes || '')}</td>
+      <td class="right">${r.active ? '' : `
+        <form class="inline" method="post" action="/release/rollback" onsubmit="return confirm('${esc(r.version_name)} (code ${r.version_code}) 버전으로 롤백할까요?\\n기기들이 다음 체크인 때 이 버전으로 자동 다운그레이드/재설치됩니다.');">
+          <input type="hidden" name="id" value="${r.id}">
+          <button class="btn ghost" type="submit">이 버전으로 롤백</button>
+        </form>`}</td>
+    </tr>`).join('');
 
   return page('기기 현황 · 두비덥 키오스크 관리', `
     <header class="top">
@@ -189,12 +245,42 @@ function dashboardPage({ devices, release, stats, thresholds }) {
       <p class="muted small" style="margin:8px 0 0;">versionCode 는 앱 <span class="mono">build.gradle.kts</span> 의 값과 동일하게 입력하세요. 기존보다 높아야 기기들이 자동 업데이트합니다.</p>
     </div>
 
+    <div class="card"><h2>배포 이력</h2>
+      <div class="overflow"><table>
+        <thead><tr><th>버전</th><th>크기</th><th>업로드</th><th>메모</th><th></th></tr></thead>
+        <tbody>${releaseHistoryRows || '<tr><td colspan="5" class="center muted">이력이 없습니다.</td></tr>'}</tbody>
+      </table></div>
+      <p class="muted small" style="margin:8px 0 0;">롤백은 기존에 올려둔 APK 파일을 그대로 다시 배포판으로 지정한다(재업로드 불필요). 기기들은 다음 체크인 때 이 버전을 감지해 자동 설치한다.</p>
+    </div>
+
+    <div class="card"><h2>영상 자료실</h2>
+      <form method="post" action="/media/upload" enctype="multipart/form-data" class="row">
+        <input type="file" name="video" accept=".mp4,.m4v,.mkv,.webm" required>
+        <button class="btn" type="submit">영상 업로드</button>
+      </form>
+      <p class="muted small" style="margin:8px 0 16px;">업로드한 영상은 여기 보관되며, 아래 기기 목록에서 원하는 기기를 골라 개별 배포한다. 대용량 파일이라 업로드에 시간이 걸릴 수 있다.</p>
+      <div class="overflow"><table>
+        <thead><tr><th>파일</th><th>크기</th><th>업로드</th><th></th></tr></thead>
+        <tbody>${media.map(m => `<tr>
+            <td class="small" style="word-break:break-all;">${esc(m.original_name)}</td>
+            <td class="small">${fmtBytes(m.size)}</td>
+            <td class="small">${esc(relTime(m.uploaded_at))}</td>
+            <td class="right">
+              <form class="inline" method="post" action="/media/delete" onsubmit="return confirm('자료실에서 이 영상을 삭제할까요? (이미 기기에 내려간 사본은 지워지지 않음)');">
+                <input type="hidden" name="id" value="${m.id}">
+                <button class="btn ghost" type="submit">삭제</button>
+              </form>
+            </td>
+          </tr>`).join('') || '<tr><td colspan="4" class="center muted">업로드된 영상이 없습니다.</td></tr>'}</tbody>
+      </table></div>
+    </div>
+
     <div class="card"><h2>버전 분포</h2>${verDist}</div>
 
     <div class="card"><h2>기기 목록 <span class="muted small">(${devices.length}대)</span></h2>
       <div class="overflow"><table>
-        <thead><tr><th>상태</th><th>기기 / 기관</th><th>모델</th><th>버전</th><th>잠금·배터리</th><th>영상</th><th>마지막 접속</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="8" class="center muted">아직 체크인한 기기가 없습니다.</td></tr>'}</tbody>
+        <thead><tr><th>상태</th><th>기기 / 기관</th><th>모델</th><th>버전</th><th>잠금·배터리</th><th>영상</th><th>업데이트</th><th>마지막 접속</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="9" class="center muted">아직 체크인한 기기가 없습니다.</td></tr>'}</tbody>
       </table></div>
     </div>
   `);
