@@ -17,15 +17,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,9 +32,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.dobedub.kiosk.ui.components.KidActionButton
 import com.dobedub.kiosk.ui.theme.BackgroundNormal
+import com.dobedub.kiosk.ui.theme.KidBlue
+import com.dobedub.kiosk.ui.theme.KidBlueDark
+import com.dobedub.kiosk.ui.theme.KidGreen
+import com.dobedub.kiosk.ui.theme.KidGreenDark
+import com.dobedub.kiosk.ui.theme.KidPurple
+import com.dobedub.kiosk.ui.theme.KidPurpleDark
+import com.dobedub.kiosk.ui.theme.KidSunny
+import com.dobedub.kiosk.ui.theme.KidSunnyDark
 import com.dobedub.kiosk.ui.theme.LabelSecondary
 import com.dobedub.kiosk.ui.theme.LineNeutral
+import compose.icons.TablerIcons
+import compose.icons.tablericons.ArrowLeft
+import compose.icons.tablericons.Book
+import compose.icons.tablericons.Home2
+import compose.icons.tablericons.Refresh
 import kotlinx.coroutines.delay
 
 /**
@@ -118,37 +125,69 @@ fun RestrictedWebViewScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize().background(BackgroundNormal)) {
+        // 아이들이 쓰는 화면이라 아이콘만 있는 작은 버튼 대신 색이 구분되는 큰 동그란
+        // 버튼으로 둔다. 가장 많이 쓰는 "키오스크 홈으로"만 글자를 붙여 알약 모양으로 크게.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(BackgroundNormal)
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = {
-                onUserInteraction()
-                onExitToKioskHome()
-            }) { Icon(Icons.Filled.Close, contentDescription = "키오스크 홈으로 닫기") }
+            KidActionButton(
+                icon = TablerIcons.Home2,
+                contentDescription = "키오스크 홈으로 닫기",
+                label = "홈으로",
+                face = KidGreen,
+                shade = KidGreenDark,
+                onClick = {
+                    onUserInteraction()
+                    onExitToKioskHome()
+                }
+            )
 
-            IconButton(onClick = {
-                onUserInteraction()
-                loadError = null
-                webViewRef?.loadUrl(startUrl)
-            }) { Icon(Icons.Filled.Home, contentDescription = "시작 화면") }
+            KidActionButton(
+                icon = TablerIcons.ArrowLeft,
+                contentDescription = "뒤로",
+                face = KidBlue,
+                shade = KidBlueDark,
+                onClick = {
+                    onUserInteraction()
+                    webViewRef?.let { if (it.canGoBack()) it.goBack() }
+                }
+            )
 
-            IconButton(onClick = {
-                onUserInteraction()
-                webViewRef?.let { if (it.canGoBack()) it.goBack() }
-            }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로") }
+            KidActionButton(
+                icon = TablerIcons.Refresh,
+                contentDescription = "새로고침",
+                face = KidPurple,
+                shade = KidPurpleDark,
+                onClick = {
+                    onUserInteraction()
+                    loadError = null
+                    webViewRef?.reload()
+                }
+            )
 
-            IconButton(onClick = {
-                onUserInteraction()
-                loadError = null
-                webViewRef?.reload()
-            }) { Icon(Icons.Filled.Refresh, contentDescription = "새로고침") }
+            KidActionButton(
+                icon = TablerIcons.Book,
+                contentDescription = "도서관 시작 화면",
+                face = KidSunny,
+                shade = KidSunnyDark,
+                onClick = {
+                    onUserInteraction()
+                    loadError = null
+                    webViewRef?.loadUrl(startUrl)
+                }
+            )
 
             if (isLoading) {
-                CircularProgressIndicator(modifier = Modifier.padding(start = 8.dp).size(20.dp))
+                CircularProgressIndicator(
+                    color = KidGreen,
+                    strokeWidth = 4.dp,
+                    modifier = Modifier.padding(start = 6.dp).size(30.dp)
+                )
             }
         }
         androidx.compose.material3.HorizontalDivider(color = LineNeutral)

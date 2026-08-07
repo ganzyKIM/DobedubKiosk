@@ -40,6 +40,7 @@ val KidInkSoft = Color(0xFF8A8172)
 val KidTitle = Color(0xFF1E3A8A)      // 로고 타이틀 전용 — 하늘색 배경 위에서 또렷한 진남색
 val KidBubble = Color(0xFFFFFFFF)     // 말풍선 면
 val KidSunny = Color(0xFFFFC93C)      // 포인트(별·강조)
+val KidSunnyDark = Color(0xFFD9A216)  // KidSunny 의 그림자 톤
 
 // 모던 키오스크 UI 보조 토큰 (홈 재설계)
 val HomeBgTop = Color(0xFFFFFFFF)      // 상단 배경(흰색)
