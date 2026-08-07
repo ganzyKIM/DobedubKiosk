@@ -423,14 +423,17 @@ private fun DraggableMascot(parentW: Int, parentH: Int, modifier: Modifier = Mod
                                     }
                                 }
                                 if (dragging) {
-                                    change.consume()
                                     // 반드시 positionChange()를 쓸 것. change.position은 이 노드의
                                     // "로컬" 좌표라, 직접 저장해둔 이전 위치와 빼면 그 사이 노드가
                                     // 이동한 양이 반대 부호로 섞여 들어간다 — 이동/취소가 매 프레임
                                     // 번갈아 일어나며 덜덜 떨리고 실제 속도도 손가락의 절반이 된다.
                                     // positionChange()는 Compose가 두 좌표를 같은 변환으로 맞춰
                                     // 계산해주므로 순수 손가락 이동량만 나온다.
+                                    // 소비(consume)보다 반드시 먼저 읽을 것 — positionChange()는
+                                    // 이미 소비된 change에 대해 Offset.Zero를 돌려주므로, 순서를
+                                    // 바꾸면 델타가 항상 0이 되어 드래그가 아예 먹지 않는다.
                                     val delta = change.positionChange()
+                                    change.consume()
                                     offsetX = (offsetX + delta.x)
                                         .coerceIn(0f, (parentW - selfW).coerceAtLeast(0).toFloat())
                                     offsetY = (offsetY + delta.y)
