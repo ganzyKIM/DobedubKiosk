@@ -1,7 +1,9 @@
 # 두비덥 도서관 키오스크 (DobedubKiosk)
 
-Lenovo TB-J606F 태블릿을 도서관 납품용 키오스크로 잠그는 Android 앱.
-기획 배경/디자인 근거/리스크는 [기획문서.md](기획문서.md) 참고.
+Lenovo TB-J606F 태블릿을 도서관 납품용 키오스크로 잠그는 Android 앱 + 원격 관리 서버.
+기획 배경/디자인 근거/리스크는 [기획문서.md](기획문서.md) 참고. 현재 버전 **1.0**
+(`versionCode=5`) — 아동용 리디자인 + 원격 관리(업데이트/영상/롤백/강제알림) 첫 완성 지점.
+프로젝트 전체 컨텍스트·최근 변경사항은 [CLAUDE.md](CLAUDE.md) 참고.
 
 ## 빌드
 
@@ -45,9 +47,13 @@ powershell -ExecutionPolicy Bypass -File .\setup-tablet.ps1 -SkipVideo # 영상 
 
 ## 원격 관리 / 앱 자동 업데이트 (함대 관리)
 
-배포된 태블릿을 현장 방문 없이 일괄 업데이트하고 접속·버전 현황을 백오피스에서 본다.
-- 앱: 6시간마다 서버에 체크인 → 새 버전이면 **Device Owner 무인 설치**(`app/.../update/AppUpdater.kt`)
-- 서버/백오피스: `server/` (Node.js + SQLite), 대시보드 `/dashboard`
+배포된 태블릿을 현장 방문 없이 일괄 업데이트·영상 배포하고 접속·버전 현황을 백오피스에서 본다.
+- 앱: 30분마다 서버에 체크인 → 새 버전이면 **Device Owner 무인 설치**(`app/.../update/AppUpdater.kt`).
+  관리자가 요청한 기기는 조용히 설치하지 않고 홈 화면에 확인창을 띄운다.
+- 서버/백오피스: `server/` (Node.js + SQLite), 대시보드 `/dashboard` — 배포 버전 이력/롤백,
+  영상 자료실(업로드 후 기기별 배포), 강제 업데이트 알림.
+- 도서관처럼 이 서버와 다른 네트워크에 있는 태블릿을 관리하려면 **공인 HTTPS 주소**가 필수다
+  (사설 IP는 앱이 자체적으로 차단). `server/start-tunnel.ps1`로 임시 주소를 만들 수 있다.
 - 전체 개요·서명 키 주의사항: **[원격관리_업데이트.md](원격관리_업데이트.md)**, 서버 운영: **[server/README.md](server/README.md)**
 
 > ⚠ **서명 키**: 업데이트는 같은 키로 서명된 APK만 가능하다. `release-keystore.jks` + `keystore.properties`
@@ -61,30 +67,22 @@ powershell -ExecutionPolicy Bypass -File .\setup-tablet.ps1 -SkipVideo # 영상 
 - 동영상 폴더: `/sdcard/Android/data/com.dobedub.kiosk/files/videos/` — 지원 포맷 mp4/m4v/mkv/webm (avi 미지원)
 - 관리자 기본 PIN: `0000` (최초 진입 시 변경 권장)
 
-## 제한 웹뷰 — 웹툰 리더 데스크탑 렌더링/싱크 보정
+## 제한 웹뷰 — 알려진 WebView 버그 우회
 
 `RestrictedWebViewScreen.kt`는 보이스툰 사이트를 **데스크탑 UA**로 접속시킨다(모바일 UA로
-접속하면 사이트가 태블릿에서도 좁은 모바일 레이아웃을 내려줌). 다만 데스크탑 UA로 받아도
-웹툰 리더는 그림 컬럼을 460px로 캡하고 중앙정렬해서 넓은 화면 가운데 좁게 나오므로,
-`TOON_FIT_JS`가 리더 페이지에 진입할 때 다음 두 가지를 자동 보정한다(태블릿 실기기 CDP로
-직접 검증됨):
+접속하면 사이트가 태블릿에서도 좁은 모바일 레이아웃을 내려줌). 그 위에 이 기기의 WebView가
+가진 두 가지 실측 버그를 `READER_HEIGHT_FIX_JS`로 우회한다 — **`dvh` 단위가 0으로 계산되는
+버그**(웹툰 리더가 백지로 보임)와 **Tailwind `translate`가 `transform`과 합산되는 버그**
+(마이보이스 카운트다운 숫자가 중심에서 밀림). 상세 원인·CDP 실측값은 `CLAUDE.md`와 해당
+파일 상단 주석 참고.
 
-1. **좌우 꽉 채우기**: 컬럼 체인(`.viewer-layout`, `.toon-scroll-layer`, `.toon-image` 등)의
-   460 폭 캡·중앙정렬을 CSS로 풀어 실제 레이아웃 폭을 화면 폭(`100vw`)으로 넓힌다.
-   (처음엔 `transform: scale`로 시도했으나 WebView가 overflow-scroll 요소의 확대를 실제
-   합성 픽셀에 반영하지 않아 좌우가 잘리는 문제가 있어 폐기 — 실제 레이아웃 폭 변경 방식으로 교체.)
-2. **오디오-스크롤 싱크 보정**: 컬럼을 넓히면 콘텐츠 실제 높이가 `S = 화면폭/460` 배 길어지는데,
-   사이트는 여전히 모바일 기준(460) 좌표계로 스크롤량을 계산해서 그대로 두면 스크롤이 S배
-   부족하게 움직인다. `.toon-scroll-layer`의 `scrollTop`/`scrollHeight`/`clientHeight`/`scrollTo`를
-   가로채, 사이트에게는 항상 460 좌표계 값(÷S)을 보여주고 실제 픽셀에는 ×S 해서 적용하는
-   어댑터를 설치해 해결했다.
-
-리더가 아닌 페이지에서는 대상 셀렉터가 없어 무효과. 자세한 배경은 파일 상단 주석 참고.
-**미해결**: 이 보정은 현재 관찰되는 사이트 DOM 구조(`.toon-scroll-layer`, 460 기준)에
-의존하므로, 사이트 쪽 프론트엔드가 리뉴얼되면 다시 확인 필요.
+**건드리면 안 되는 것**: 리더 폭(460px)을 CSS로 넓히려는 시도는 이미 해봤고 실패했다 —
+사이트가 스크롤-오디오 싱크를 460 기준으로 하드코딩해서 폭만 넓히면 싱크가 깨진다.
+근본 해결은 사이트 쪽에서 460 캡을 제거해야 한다(자세한 내용은 `CLAUDE.md` "건드리면
+안 되는 것" 참조).
 
 ## 알려진 제약 / TODO
 
-- Pretendard 폰트 파일 미포함 — 현재 시스템 SansSerif로 대체 렌더링됨. `app/src/main/res/font/`에 폰트 추가 후 `ui/theme/Type.kt`의 `PretendardFamily` 교체 필요.
 - 런처 아이콘은 브랜드 라임 그린 단색 placeholder — 실제 로고 에셋 필요.
-- 백오피스 연동(원격 동영상 배포, 설정 원격 변경)은 후속 범위.
+- 함대 서버가 아직 고정 공인 주소로 상시 운영되지 않음(§원격 관리 참조) — 임시로
+  Cloudflare Quick Tunnel을 쓰는 중이며, 재시작마다 주소가 바뀌어 실배포 전 전환 필요.
