@@ -77,7 +77,7 @@ import com.dobedub.kiosk.ui.theme.KidInk
 import com.dobedub.kiosk.ui.theme.KidInkSoft
 import com.dobedub.kiosk.ui.theme.KidPurple
 import com.dobedub.kiosk.ui.theme.KidPurpleDark
-import com.dobedub.kiosk.ui.theme.KidSunny
+import com.dobedub.kiosk.ui.theme.KidTitle
 import compose.icons.TablerIcons
 import compose.icons.tablericons.Book
 import compose.icons.tablericons.Microphone
@@ -105,7 +105,7 @@ private val CHARACTER_IMAGES = listOf(
     R.drawable.character_wow_right
 )
 
-// 말풍선 대사(터치할 때마다 랜덤 전환). 서비스(보이스툰·마이보이스) 톤에 맞춘 짧은 문장들.
+// 말풍선 대사(터치할 때마다 랜덤 전환). 서비스(보이스툰·마이보이스) 톤 + 캐릭터 "빠삐뿌" 자기소개.
 private val BUBBLE_LINES = listOf(
     "오늘은 어떤 이야기를 들려줄까?",
     "네 목소리로 주인공이 되어보자!",
@@ -119,7 +119,13 @@ private val BUBBLE_LINES = listOf(
     "잘하고 있어, 계속 해보자!",
     "오늘도 신나는 하루!",
     "이야기 속으로 풍덩!",
-    "무엇을 해볼까?"
+    "무엇을 해볼까?",
+    "나는 빠삐뿌야!",
+    "빠삐뿌와 놀자!",
+    "안녕, 난 빠삐뿌야!",
+    "빠삐뿌가 도와줄게!",
+    "빠삐뿌랑 같이 볼까?",
+    "오늘은 빠삐뿌랑 신나게!"
 )
 
 private fun <T> List<T>.randomIndexExcept(current: Int): Int {
@@ -160,7 +166,7 @@ fun HomeScreen(
                     Text(
                         text = "보이스툰 도서관",
                         fontSize = 30.sp,
-                        color = KidInk,
+                        color = KidTitle,
                         modifier = Modifier.clickable(
                             indication = null,
                             interactionSource = remember { MutableInteractionSource() }
@@ -186,14 +192,7 @@ fun HomeScreen(
                     KidCard("마이보이스", TablerIcons.Microphone, KidPurple, KidPurpleDark, Modifier.weight(1f), onOpenMyVoice)
                 }
 
-                // 텍스트 라벨 대신, 색이 있는 동글동글한 구슬 하나로만 가볍게 구분한다.
-                Spacer(Modifier.height(18.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(Modifier.size(10.dp).clip(CircleShape).background(KidSunny))
-                    Box(Modifier.size(10.dp).clip(CircleShape).background(KidPurple))
-                    Box(Modifier.size(10.dp).clip(CircleShape).background(KidBlue))
-                }
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(20.dp))
             }
 
             // ── 스크롤 영역: 이용안내 이미지만 ──
@@ -272,7 +271,8 @@ private fun KidCard(
             Spacer(Modifier.height(12.dp))
             Text(label, fontSize = 22.sp, color = Color.White, textAlign = TextAlign.Center, maxLines = 1)
         }
-        // 반짝이는 하이라이트: 버블(구슬)이 빛을 반사하듯, 카드의 좌상단 둥근 모서리 곡선을 따라 그린다.
+        // 반짝이는 하이라이트: 카드의 좌상단 둥근 모서리와 같은 중심을 공유하되, 반지름을 살짝
+        // 줄인 동심원 호로 그린다 — 테두리에 딱 붙지 않고 안쪽에 살짝 뜬 광택처럼 보인다.
         Canvas(
             modifier = Modifier
                 .fillMaxWidth().height(161.dp)
@@ -280,15 +280,16 @@ private fun KidCard(
                 .graphicsLayer { scaleX = scale.value / 100f; scaleY = scale.value / 100f }
         ) {
             val r = 44.dp.toPx()
-            val stroke = 9.dp.toPx()
-            val inset = stroke / 2f
+            val stroke = 8.dp.toPx()
+            val gap = 12.dp.toPx() // 테두리에서 띄우는 간격
+            val inset = stroke / 2f + gap
             drawArc(
-                color = Color.White.copy(alpha = 0.5f),
+                color = Color.White.copy(alpha = 0.55f),
                 startAngle = 180f,
                 sweepAngle = 90f,
                 useCenter = false,
                 topLeft = Offset(inset, inset),
-                size = Size(2 * r - stroke, 2 * r - stroke),
+                size = Size(2 * r - stroke - 2 * gap, 2 * r - stroke - 2 * gap),
                 style = Stroke(width = stroke, cap = StrokeCap.Round)
             )
         }
@@ -296,11 +297,14 @@ private fun KidCard(
 }
 
 /**
- * 드래그로 위치를 옮길 수 있는 캐릭터 + 말풍선. 터치하면 표정(이미지)과 대사가 랜덤으로
- * 바뀌고, 통통 튀는 바운스 애니메이션이 재생된다 — 매번 다른 반응처럼 느껴지도록.
+ * 드래그로 위치를 옮길 수 있는 캐릭터("빠삐뿌") + 말풍선. 터치하면 표정(이미지)과 대사가
+ * 랜덤으로 바뀌고, 통통 튀는 바운스 애니메이션이 재생된다 — 매번 다른 반응처럼 느껴지도록.
  *
  * 캐릭터는 `res/drawable/character_*.webp` 로 교체/추가한다 — Coil의 ImageDecoderDecoder가
  * 움직이는 WebP를 그대로 애니메이션 재생한다.
+ *
+ * 터치/드래그 히트 영역은 캐릭터 이미지(330dp)보다 훨씬 작은 원(180dp)으로 좁혀, 웹피의
+ * 투명 여백이 아니라 실제 캐릭터 몸통을 만졌을 때만 반응하게 한다.
  *
  * ponytail: 위치·표정은 세션 메모리에만 둔다. 재부팅 시 기본값으로 돌아가는 편이 키오스크엔
  * 안전하다. 영구 저장이 필요하면 DataStore에 x/y 키를 추가할 것.
@@ -338,41 +342,19 @@ private fun DraggableMascot(parentW: Int, parentH: Int, modifier: Modifier = Mod
         }
     }
 
+    // ImageRequest를 charIndex가 바뀔 때만 새로 만든다. 매번 새로 build()하면(예: 드래그로
+    // 인한 잦은 recomposition마다) Coil이 "새 요청"으로 보고 움짤을 처음부터 다시 디코딩/재생해
+    // 캐릭터가 덜덜 떠는 것처럼 보이는 원인이 됐다.
+    val imageRequest = remember(charIndex) {
+        ImageRequest.Builder(context).data(CHARACTER_IMAGES[charIndex]).build()
+    }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
             .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
             .onSizeChanged { selfW = it.width; selfH = it.height }
             .padding(start = 18.dp, bottom = 18.dp)
-            // 드래그와 탭을 한 제스처 블록에서 판별한다: 이동거리가 터치슬롭을 넘으면 드래그로
-            // 전환하고, 넘기지 않고 손을 떼면 탭으로 본다. (별도 pointerInput 2개로 나누면
-            // drag 디텍터가 down 이벤트를 선점해 tap 이 실기기에서 씹히는 경우가 있었음)
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    val down = awaitFirstDown()
-                    var dragging = false
-                    // 프레임워크의 change.positionChange()(직전 이벤트 대비 델타)는 실기기에서
-                    // 첫 이벤트에 이상값을 준 적이 있어(단순 탭인데 드래그로 오판), 다운 지점 기준
-                    // 절대 변위를 우리가 직접 추적한다.
-                    var lastPos = down.position
-                    do {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        if (!dragging) {
-                            val totalDisplacement = change.position - down.position
-                            if (totalDisplacement.getDistance() > viewConfiguration.touchSlop) dragging = true
-                        }
-                        if (dragging) {
-                            change.consume()
-                            val delta = change.position - lastPos
-                            offsetX = (offsetX + delta.x).coerceIn(0f, (parentW - selfW).coerceAtLeast(0).toFloat())
-                            offsetY = (offsetY + delta.y).coerceIn(-(parentH - selfH).coerceAtLeast(0).toFloat(), 0f)
-                        }
-                        lastPos = change.position
-                    } while (event.changes.any { it.pressed })
-                    if (!dragging) react()
-                }
-            }
     ) {
         Box(
             Modifier
@@ -384,16 +366,55 @@ private fun DraggableMascot(parentW: Int, parentH: Int, modifier: Modifier = Mod
             Text(BUBBLE_LINES[lineIndex], fontSize = 22.sp, color = KidInk, textAlign = TextAlign.Center)
         }
         Spacer(Modifier.height(8.dp))
-        AsyncImage(
-            model = ImageRequest.Builder(context).data(CHARACTER_IMAGES[charIndex]).build(),
-            imageLoader = gifLoader,
-            contentDescription = null,
-            modifier = Modifier
-                .size(330.dp)
-                .graphicsLayer {
-                    scaleX = bounce.value; scaleY = bounce.value
-                    rotationZ = wiggle.value
-                }
-        )
+        Box(modifier = Modifier.size(330.dp), contentAlignment = Alignment.Center) {
+            AsyncImage(
+                model = imageRequest,
+                imageLoader = gifLoader,
+                contentDescription = "빠삐뿌",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = bounce.value; scaleY = bounce.value
+                        rotationZ = wiggle.value
+                    }
+            )
+            // 히트 영역: 이미지 전체(330dp)가 아니라 실제 캐릭터 몸통 크기에 가까운 원만 반응한다.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(180.dp)
+                    // 드래그와 탭을 한 제스처 블록에서 판별한다: 이동거리가 터치슬롭을 넘으면
+                    // 드래그로 전환하고, 넘기지 않고 손을 떼면 탭으로 본다. (별도 pointerInput
+                    // 2개로 나누면 drag 디텍터가 down 이벤트를 선점해 tap 이 실기기에서 씹혔음)
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown()
+                            var dragging = false
+                            // 프레임워크의 change.positionChange()(직전 이벤트 대비 델타)는
+                            // 실기기에서 첫 이벤트에 이상값을 준 적이 있어(단순 탭인데 드래그로
+                            // 오판), 다운 지점 기준 절대 변위를 우리가 직접 추적한다.
+                            var lastPos = down.position
+                            do {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!dragging) {
+                                    val totalDisplacement = change.position - down.position
+                                    if (totalDisplacement.getDistance() > viewConfiguration.touchSlop) dragging = true
+                                }
+                                if (dragging) {
+                                    change.consume()
+                                    val delta = change.position - lastPos
+                                    offsetX = (offsetX + delta.x)
+                                        .coerceIn(0f, (parentW - selfW).coerceAtLeast(0).toFloat())
+                                    offsetY = (offsetY + delta.y)
+                                        .coerceIn(-(parentH - selfH).coerceAtLeast(0).toFloat(), 0f)
+                                }
+                                lastPos = change.position
+                            } while (event.changes.any { it.pressed })
+                            if (!dragging) react()
+                        }
+                    }
+            )
+        }
     }
 }
