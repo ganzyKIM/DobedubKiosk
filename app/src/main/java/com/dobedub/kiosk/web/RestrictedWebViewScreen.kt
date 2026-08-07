@@ -44,8 +44,8 @@ import com.dobedub.kiosk.ui.theme.LabelSecondary
 import com.dobedub.kiosk.ui.theme.LineNeutral
 import compose.icons.TablerIcons
 import compose.icons.tablericons.ArrowLeft
-import compose.icons.tablericons.Home2
 import compose.icons.tablericons.Refresh
+import compose.icons.tablericons.X
 import kotlinx.coroutines.delay
 
 /**
@@ -133,7 +133,7 @@ fun RestrictedWebViewScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             KidActionButton(
-                icon = TablerIcons.Home2,
+                icon = TablerIcons.X,
                 contentDescription = "키오스크 홈으로 닫기",
                 label = "닫기",
                 face = KidGreen,
