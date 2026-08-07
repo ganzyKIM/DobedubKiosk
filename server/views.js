@@ -76,9 +76,13 @@ function loginPage(error) {
     </div>`);
 }
 
-function dashboardPage({ devices, release, stats }) {
-  const online = 15 * 60 * 1000;     // 15분 이내 = 온라인
-  const stale = 24 * 60 * 60 * 1000; // 24시간 초과 = 장기 미접속
+function dashboardPage({ devices, release, stats, thresholds }) {
+  // 임계값은 반드시 server.js 에서 받아 쓴다 — 여기에 따로 박아두면 앱 체크인 주기가
+  // 바뀌었을 때 서버 집계와 표시가 어긋난다(실제로 그래서 정상 기기가 "대기"로 보였다).
+  const online = thresholds.onlineMs;
+  const stale = thresholds.staleMs;
+  const onlineLabel = `${Math.round(online / 60000)}분 내`;
+  const staleLabel = `${Math.round(stale / 3600000)}시간+`;
 
   const verDist = stats.versionDist.map(v => {
     const pct = stats.total ? Math.round(v.count / stats.total * 100) : 0;
@@ -168,8 +172,8 @@ function dashboardPage({ devices, release, stats }) {
 
     <div class="kpis">
       <div class="kpi"><div class="n">${stats.total}</div><div class="l">전체 기기</div></div>
-      <div class="kpi"><div class="n" style="color:var(--ok)">${stats.online}</div><div class="l">온라인 (15분 내)</div></div>
-      <div class="kpi"><div class="n" style="color:var(--bad)">${stats.offline}</div><div class="l">오프라인 (24시간+)</div></div>
+      <div class="kpi"><div class="n" style="color:var(--ok)">${stats.online}</div><div class="l">온라인 (${esc(onlineLabel)})</div></div>
+      <div class="kpi"><div class="n" style="color:var(--bad)">${stats.offline}</div><div class="l">오프라인 (${esc(staleLabel)})</div></div>
       <div class="kpi"><div class="n">${stats.onLatest}/${stats.total}</div><div class="l">최신 버전</div></div>
     </div>
 

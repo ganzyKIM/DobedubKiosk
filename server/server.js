@@ -19,6 +19,15 @@ const views = require('./views');
 
 const PORT = Number(process.env.PORT || 8090);
 const DEVICE_TOKEN = process.env.DEVICE_TOKEN || '';   // 설정 시 기기 체크인에 X-Kiosk-Token 요구
+
+// 기기 체크인 주기 — 앱의 MainActivity.UPDATE_CHECK_INTERVAL_MS 와 반드시 같은 값.
+// 온라인/오프라인 임계값은 반드시 이 값에서 파생시킬 것. 예전엔 앱은 6시간 주기인데
+// 대시보드는 "15분 내 = 온라인"으로 따로 박혀 있어, 멀쩡한 기기도 96% 시간 동안
+// 노란 "대기"로 표시되고 온라인 KPI가 항상 0이었다.
+const CHECKIN_INTERVAL_MS = 30 * 60 * 1000;
+// 두 주기를 연속으로 놓치면 이상 신호로 본다(+네트워크 지연 여유 10분).
+const ONLINE_MS = CHECKIN_INTERVAL_MS * 2 + 10 * 60 * 1000;
+const STALE_MS = 24 * 60 * 60 * 1000;
 const APK_DIR = path.join(store.DATA_DIR, 'apk');
 fs.mkdirSync(APK_DIR, { recursive: true });
 
@@ -126,13 +135,12 @@ app.get('/dashboard', auth.requireAuth, (req, res) => {
   const devices = store.allDevices();
   const release = store.getRelease();
   const now = Date.now();
-  const ONLINE = 15 * 60 * 1000, STALE = 24 * 60 * 60 * 1000;
   const distMap = new Map();
   let online = 0, offline = 0, onLatest = 0;
   for (const d of devices) {
     const age = now - d.last_seen;
-    if (age <= ONLINE) online++;
-    if (age > STALE) offline++;
+    if (age <= ONLINE_MS) online++;
+    if (age > STALE_MS) offline++;
     if (release && d.version_code === release.version_code) onLatest++;
     const key = `${d.version_code}`;
     if (!distMap.has(key)) distMap.set(key, { version_code: d.version_code, version_name: d.version_name, count: 0 });
@@ -142,9 +150,25 @@ app.get('/dashboard', auth.requireAuth, (req, res) => {
     d.pendingDeletes = store.pendingVideoDeletes(d.device_id);
   }
   const versionDist = [...distMap.values()].sort((a, b) => (b.version_code || 0) - (a.version_code || 0));
+
+  // 손볼 기기를 위로 올린다. DB는 last_seen DESC 라 정작 봐야 할 죽은 기기가 목록
+  // 맨 아래로 가라앉았다 — 대수가 늘수록 스크롤 끝까지 가야 문제를 발견하게 된다.
+  const rank = d => {
+    if (now - d.last_seen > STALE_MS) return 0;                                  // 오프라인
+    if (release && d.version_code !== release.version_code) return 1;            // 업데이트 필요
+    return 2;                                                                     // 정상
+  };
+  devices.sort((a, b) => {
+    const ra = rank(a), rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    // 오프라인끼리는 오래 끊긴 순, 나머지는 최근 접속 순
+    return ra === 0 ? a.last_seen - b.last_seen : b.last_seen - a.last_seen;
+  });
+
   res.type('html').send(views.dashboardPage({
     devices, release,
-    stats: { total: devices.length, online, offline, onLatest, versionDist }
+    stats: { total: devices.length, online, offline, onLatest, versionDist },
+    thresholds: { onlineMs: ONLINE_MS, staleMs: STALE_MS }
   }));
 });
 

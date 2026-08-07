@@ -95,7 +95,11 @@ Windows 상시 구동은 [NSSM](https://nssm.cc/) 등으로 `node server.js` 를
 1. 앱 `app/build.gradle.kts` 의 `versionCode` 를 올리고(+1), `versionName` 갱신.
 2. **릴리스 APK 빌드**: `gradlew assembleRelease` (키스토어 보유 PC에서 — 서명이 기존 기기와 같아야 함).
 3. 대시보드 → **"새 APK 업로드"** 에 APK + 같은 versionCode/versionName 입력 → 업로드.
-4. 기기들이 다음 체크인(최대 6시간, 재부팅 시 즉시) 때 자동으로 내려받아 무인 설치.
+4. 기기들이 다음 체크인(최대 30분, 재부팅 시 즉시) 때 자동으로 내려받아 무인 설치.
+
+> **체크인 주기는 앱과 서버 양쪽에 있다.** 앱 `MainActivity.UPDATE_CHECK_INTERVAL_MS` 와
+> 서버 `server.js` 의 `CHECKIN_INTERVAL_MS` 는 항상 같은 값이어야 한다. 대시보드의
+> 온라인/오프라인 판정이 서버 쪽 값에서 파생되므로, 어긋나면 멀쩡한 기기가 "대기"로 표시된다.
 
 > APK 무결성은 서버가 계산한 sha256 을 기기가 다운로드 후 검증한다.
 > versionCode 가 기기의 현재 값보다 커야만 업데이트가 트리거된다.
