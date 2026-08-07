@@ -1,10 +1,15 @@
 package com.dobedub.kiosk.ui.home
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +27,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -33,12 +39,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -70,7 +82,9 @@ import compose.icons.TablerIcons
 import compose.icons.tablericons.Book
 import compose.icons.tablericons.Microphone
 import compose.icons.tablericons.Movie
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import kotlin.random.Random
 
 private const val HIDDEN_ADMIN_TAP_COUNT = 5
 
@@ -82,10 +96,43 @@ private val MANUAL_TILES = listOf(
     R.drawable.user_manual_09, R.drawable.user_manual_10, R.drawable.user_manual_11
 )
 
+// 캐릭터 움짤(터치할 때마다 다른 표정으로 랜덤 전환).
+private val CHARACTER_IMAGES = listOf(
+    R.drawable.character_mic,
+    R.drawable.character_encourage,
+    R.drawable.character_surprise,
+    R.drawable.character_wow_center,
+    R.drawable.character_wow_right
+)
+
+// 말풍선 대사(터치할 때마다 랜덤 전환). 서비스(보이스툰·마이보이스) 톤에 맞춘 짧은 문장들.
+private val BUBBLE_LINES = listOf(
+    "오늘은 어떤 이야기를 들려줄까?",
+    "네 목소리로 주인공이 되어보자!",
+    "책 속 친구들이 기다리고 있어요",
+    "마이보이스로 더빙해볼래?",
+    "우와, 정말 재미있겠다!",
+    "귀 기울여 들어볼까?",
+    "너의 목소리는 특별해!",
+    "함께 읽고, 함께 말해요",
+    "다음엔 어떤 캐릭터가 될까?",
+    "잘하고 있어, 계속 해보자!",
+    "오늘도 신나는 하루!",
+    "이야기 속으로 풍덩!",
+    "무엇을 해볼까?"
+)
+
+private fun <T> List<T>.randomIndexExcept(current: Int): Int {
+    if (size <= 1) return 0
+    var next: Int
+    do { next = Random.nextInt(size) } while (next == current)
+    return next
+}
+
 /**
  * 아동 교육앱(엘리하이·핑크퐁) 톤의 키오스크 홈.
- * 상단(제목 + 큰 버튼 3개 + 섹션 라벨)은 고정, 이용안내 이미지 영역만 스크롤한다.
- * 화면 위에는 드래그로 옮길 수 있는 캐릭터와 말풍선이 떠 있다.
+ * 상단(제목 + 큰 버튼 3개)은 고정, 이용안내 이미지 영역만 스크롤한다.
+ * 화면 위에는 드래그로 옮길 수 있는 캐릭터와 말풍선이 떠 있고, 터치할 때마다 표정·대사가 바뀐다.
  */
 @Composable
 fun HomeScreen(
@@ -139,11 +186,12 @@ fun HomeScreen(
                     KidCard("마이보이스", TablerIcons.Microphone, KidPurple, KidPurpleDark, Modifier.weight(1f), onOpenMyVoice)
                 }
 
-                Spacer(Modifier.height(22.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(14.dp).clip(CircleShape).background(KidSunny))
-                    Spacer(Modifier.width(8.dp))
-                    Text("이용 안내", fontSize = 20.sp, color = KidInk)
+                // 텍스트 라벨 대신, 색이 있는 동글동글한 구슬 하나로만 가볍게 구분한다.
+                Spacer(Modifier.height(18.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(KidSunny))
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(KidPurple))
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(KidBlue))
                 }
                 Spacer(Modifier.height(10.dp))
             }
@@ -171,7 +219,7 @@ fun HomeScreen(
     }
 }
 
-/** 큼직한 3D 느낌 버튼: 아래에 진한 색 그림자를 깔고, 누르면 눌린 만큼 내려간다. */
+/** 몽글몽글한 3D 버튼: 반짝이는 하이라이트 + 아래 진한 그림자, 누르면 눌리며 살짝 쪼그라든다. */
 @Composable
 private fun KidCard(
     label: String,
@@ -183,15 +231,24 @@ private fun KidCard(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val dy by animateDpAsState(if (pressed) 7.dp else 0.dp, label = "press")
+    val dy by animateDpAsState(
+        if (pressed) 8.dp else 0.dp,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "press-dy"
+    )
+    val scale by animateDpAsState(
+        if (pressed) 96.dp else 100.dp,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "press-scale"
+    )
 
-    Box(modifier = modifier.height(168.dp)) {
+    Box(modifier = modifier.height(172.dp)) {
         // 그림자(입체감)
         Box(
             Modifier
                 .fillMaxWidth().height(161.dp)
                 .align(Alignment.BottomCenter)
-                .clip(RoundedCornerShape(30.dp))
+                .clip(RoundedCornerShape(44.dp))
                 .background(shade)
         )
         // 윗면
@@ -199,14 +256,15 @@ private fun KidCard(
             modifier = Modifier
                 .fillMaxWidth().height(161.dp)
                 .offset(y = dy)
-                .clip(RoundedCornerShape(30.dp))
+                .graphicsLayer { scaleX = scale.value / 100f; scaleY = scale.value / 100f }
+                .clip(RoundedCornerShape(44.dp))
                 .background(face)
                 .clickable(interactionSource = interaction, indication = null, onClick = onClick),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             Box(
-                Modifier.size(72.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.22f)),
+                Modifier.size(74.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.25f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(42.dp))
@@ -214,16 +272,38 @@ private fun KidCard(
             Spacer(Modifier.height(12.dp))
             Text(label, fontSize = 22.sp, color = Color.White, textAlign = TextAlign.Center, maxLines = 1)
         }
+        // 반짝이는 하이라이트: 버블(구슬)이 빛을 반사하듯, 카드의 좌상단 둥근 모서리 곡선을 따라 그린다.
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth().height(161.dp)
+                .offset(y = dy)
+                .graphicsLayer { scaleX = scale.value / 100f; scaleY = scale.value / 100f }
+        ) {
+            val r = 44.dp.toPx()
+            val stroke = 9.dp.toPx()
+            val inset = stroke / 2f
+            drawArc(
+                color = Color.White.copy(alpha = 0.5f),
+                startAngle = 180f,
+                sweepAngle = 90f,
+                useCenter = false,
+                topLeft = Offset(inset, inset),
+                size = Size(2 * r - stroke, 2 * r - stroke),
+                style = Stroke(width = stroke, cap = StrokeCap.Round)
+            )
+        }
     }
 }
 
 /**
- * 드래그로 위치를 옮길 수 있는 캐릭터 + 말풍선.
- * 캐릭터는 `res/drawable/character.*` 한 장으로 교체한다 — 움직이는 WebP를 넣으면 Coil의
- * ImageDecoderDecoder가 그대로 애니메이션 재생한다(파일만 교체, 코드 수정 불필요).
+ * 드래그로 위치를 옮길 수 있는 캐릭터 + 말풍선. 터치하면 표정(이미지)과 대사가 랜덤으로
+ * 바뀌고, 통통 튀는 바운스 애니메이션이 재생된다 — 매번 다른 반응처럼 느껴지도록.
  *
- * ponytail: 위치는 세션 메모리에만 둔다. 재부팅 시 기본 위치로 돌아가는 편이 키오스크엔 안전하다.
- * 영구 저장이 필요하면 DataStore에 x/y 키를 추가할 것.
+ * 캐릭터는 `res/drawable/character_*.webp` 로 교체/추가한다 — Coil의 ImageDecoderDecoder가
+ * 움직이는 WebP를 그대로 애니메이션 재생한다.
+ *
+ * ponytail: 위치·표정은 세션 메모리에만 둔다. 재부팅 시 기본값으로 돌아가는 편이 키오스크엔
+ * 안전하다. 영구 저장이 필요하면 DataStore에 x/y 키를 추가할 것.
  */
 @Composable
 private fun DraggableMascot(parentW: Int, parentH: Int, modifier: Modifier = Modifier) {
@@ -231,11 +311,31 @@ private fun DraggableMascot(parentW: Int, parentH: Int, modifier: Modifier = Mod
     var offsetY by remember { mutableFloatStateOf(0f) }
     var selfW by remember { mutableIntStateOf(0) }
     var selfH by remember { mutableIntStateOf(0) }
+    var charIndex by remember { mutableIntStateOf(Random.nextInt(CHARACTER_IMAGES.size)) }
+    var lineIndex by remember { mutableIntStateOf(Random.nextInt(BUBBLE_LINES.size)) }
+
+    val scope = rememberCoroutineScope()
+    val bounce = remember { Animatable(1f) }
+    val wiggle = remember { Animatable(0f) }
 
     val context = LocalContext.current
     // 움직이는 WebP/GIF 재생에 필요(API 28+, 이 앱 minSdk 29).
     val gifLoader = remember {
         ImageLoader.Builder(context).components { add(ImageDecoderDecoder.Factory()) }.build()
+    }
+
+    fun react() {
+        charIndex = CHARACTER_IMAGES.randomIndexExcept(charIndex)
+        lineIndex = BUBBLE_LINES.randomIndexExcept(lineIndex)
+        val tilt = if (Random.nextBoolean()) -10f else 10f
+        scope.launch {
+            bounce.snapTo(0.75f)
+            bounce.animateTo(1f, spring(dampingRatio = Spring.DampingRatioHighBouncy, stiffness = Spring.StiffnessLow))
+        }
+        scope.launch {
+            wiggle.snapTo(tilt)
+            wiggle.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+        }
     }
 
     Column(
@@ -244,29 +344,56 @@ private fun DraggableMascot(parentW: Int, parentH: Int, modifier: Modifier = Mod
             .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
             .onSizeChanged { selfW = it.width; selfH = it.height }
             .padding(start = 18.dp, bottom = 18.dp)
+            // 드래그와 탭을 한 제스처 블록에서 판별한다: 이동거리가 터치슬롭을 넘으면 드래그로
+            // 전환하고, 넘기지 않고 손을 떼면 탭으로 본다. (별도 pointerInput 2개로 나누면
+            // drag 디텍터가 down 이벤트를 선점해 tap 이 실기기에서 씹히는 경우가 있었음)
             .pointerInput(Unit) {
-                detectDragGestures { change, drag ->
-                    change.consume()
-                    // 화면 밖으로 나가지 않도록 가둔다(좌하단 정렬 기준).
-                    offsetX = (offsetX + drag.x).coerceIn(0f, (parentW - selfW).coerceAtLeast(0).toFloat())
-                    offsetY = (offsetY + drag.y).coerceIn(-(parentH - selfH).coerceAtLeast(0).toFloat(), 0f)
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    var dragging = false
+                    // 프레임워크의 change.positionChange()(직전 이벤트 대비 델타)는 실기기에서
+                    // 첫 이벤트에 이상값을 준 적이 있어(단순 탭인데 드래그로 오판), 다운 지점 기준
+                    // 절대 변위를 우리가 직접 추적한다.
+                    var lastPos = down.position
+                    do {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (!dragging) {
+                            val totalDisplacement = change.position - down.position
+                            if (totalDisplacement.getDistance() > viewConfiguration.touchSlop) dragging = true
+                        }
+                        if (dragging) {
+                            change.consume()
+                            val delta = change.position - lastPos
+                            offsetX = (offsetX + delta.x).coerceIn(0f, (parentW - selfW).coerceAtLeast(0).toFloat())
+                            offsetY = (offsetY + delta.y).coerceIn(-(parentH - selfH).coerceAtLeast(0).toFloat(), 0f)
+                        }
+                        lastPos = change.position
+                    } while (event.changes.any { it.pressed })
+                    if (!dragging) react()
                 }
             }
     ) {
         Box(
             Modifier
-                .clip(RoundedCornerShape(22.dp))
+                .widthIn(max = 340.dp)
+                .clip(RoundedCornerShape(40.dp))
                 .background(KidBubble)
-                .padding(horizontal = 16.dp, vertical = 10.dp)
+                .padding(horizontal = 26.dp, vertical = 18.dp)
         ) {
-            Text("무엇을 해볼까?", fontSize = 17.sp, color = KidInk)
+            Text(BUBBLE_LINES[lineIndex], fontSize = 22.sp, color = KidInk, textAlign = TextAlign.Center)
         }
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(8.dp))
         AsyncImage(
-            model = ImageRequest.Builder(context).data(R.drawable.character).build(),
+            model = ImageRequest.Builder(context).data(CHARACTER_IMAGES[charIndex]).build(),
             imageLoader = gifLoader,
             contentDescription = null,
-            modifier = Modifier.size(132.dp)
+            modifier = Modifier
+                .size(330.dp)
+                .graphicsLayer {
+                    scaleX = bounce.value; scaleY = bounce.value
+                    rotationZ = wiggle.value
+                }
         )
     }
 }
