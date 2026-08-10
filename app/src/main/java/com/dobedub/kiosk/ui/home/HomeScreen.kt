@@ -463,19 +463,23 @@ private fun DraggableMascot(
                     }
             )
             // 히트 영역: 이미지 전체(330dp)가 아니라 실제 캐릭터 몸통 크기에 가까운 원만 반응한다.
+            // interactive 가 false(스크롤로 숨겨진 상태)일 땐 pointerInput 자체를 아예 붙이지
+            // 않는다 — Compose 의 히트테스트는 "위에 있는 노드가 소비했는지"가 아니라 "그
+            // 위치에 포인터 입력 노드가 있는지"로 대상을 정하므로, 투명해도 이 Box 가 남아있으면
+            // 아래 겹쳐 있는 LazyColumn 의 스크롤 제스처를 계속 가로챈다(실제로 이 문제가
+            // 있었다 — 캐릭터가 사라진 뒤에도 그 자리에서 이미지 스크롤이 안 먹었음).
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .size(234.dp)
-                    // 드래그와 탭을 한 제스처 블록에서 판별한다: 이동거리가 터치슬롭을 넘으면
-                    // 드래그로 전환하고, 넘기지 않고 손을 떼면 탭으로 본다. (별도 pointerInput
-                    // 2개로 나누면 drag 디텍터가 down 이벤트를 선점해 tap 이 실기기에서 씹혔음)
-                    .pointerInput(Unit) {
-                        awaitEachGesture {
-                            val down = awaitFirstDown()
-                            // 스크롤로 숨겨진 상태면 아무것도 소비하지 않고 흘려보낸다.
-                            if (!interactive) return@awaitEachGesture
-                            (animatedDrawable as? android.graphics.drawable.Animatable)?.stop()
+                    .then(
+                        if (!interactive) Modifier else Modifier.pointerInput(Unit) {
+                            // 드래그와 탭을 한 제스처 블록에서 판별한다: 이동거리가 터치슬롭을 넘으면
+                            // 드래그로 전환하고, 넘기지 않고 손을 떼면 탭으로 본다. (별도 pointerInput
+                            // 2개로 나누면 drag 디텍터가 down 이벤트를 선점해 tap 이 실기기에서 씹혔음)
+                            awaitEachGesture {
+                                val down = awaitFirstDown()
+                                (animatedDrawable as? android.graphics.drawable.Animatable)?.stop()
                             // 직전 탭의 바운스/위글 스프링이 아직 정착 중일 때 곧바로 드래그를
                             // 시작하면, 드래그로 인한 위치 이동에 스프링의 잔여 진동(스케일·회전)이
                             // 겹쳐 보여 "떨림"처럼 보일 수 있다 — 새 터치 시작 시 즉시 정지시킨다.
@@ -520,6 +524,7 @@ private fun DraggableMascot(
                             if (!dragging) react()
                         }
                     }
+                    )
             )
         }
     }
