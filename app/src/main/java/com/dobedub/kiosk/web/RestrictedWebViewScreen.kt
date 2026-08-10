@@ -1,6 +1,7 @@
 package com.dobedub.kiosk.web
 
 import android.annotation.SuppressLint
+import android.util.Log
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -32,6 +33,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import com.dobedub.kiosk.ui.components.KidActionButton
 import com.dobedub.kiosk.ui.theme.BackgroundNormal
 import com.dobedub.kiosk.ui.theme.KidBlue
@@ -90,6 +93,116 @@ private const val READER_HEIGHT_FIX_JS = """
     '[class*="viewer-layout"]{height:100vh !important;}' +
     'img[src*="myvoice/countdown"]{left:50% !important;translate:none !important;transform:translateX(-50%) !important;}';
   (document.head || document.documentElement).appendChild(s);
+})();
+"""
+
+/**
+ * 마이보이스 더빙 녹음이 너무 작고 먹먹하게 들어가는 문제 보정 — 마이크 입력 증폭 + 음성 명료화.
+ *
+ * 이 태블릿(Lenovo TB-J606F)의 내장 마이크는 입력이 매우 약해서, 아이가 평상시 목소리로
+ * 더빙해도 원본 성우 음성보다 훨씬 작게 녹음된다. 사이트를 고치지 않고 앱에서 해결하기 위해
+ * `getUserMedia` 를 감싸, 사이트가 받아가는 마이크 스트림에 처리 체인을 끼운다.
+ * 사이트 입장에선 그냥 평범한 마이크 스트림이라 사이트 코드 수정이 필요 없다.
+ *
+ * 체인 순서와 이유(순서가 중요하다):
+ *   1) 하이패스 90Hz  — 에어컨/책상 진동/발소리 같은 저역 럼블 제거.
+ *                       증폭 **전에** 깎아야 잡음까지 같이 커지지 않는다.
+ *                       아이 목소리 기본주파수는 250Hz 이상이라 목소리는 안 건드린다.
+ *   2) 피킹 +3.5dB @3kHz — 자음(ㅅ,ㅊ,ㅌ…) 대역을 살짝 올려 말이 또렷해진다.
+ *                       과하게 올리면 치찰음이 쏘므로 3.5dB 정도로 제한.
+ *   3) 로우패스 11kHz — 태블릿 마이크 특유의 고역 히스 제거. 한국어 명료도는
+ *                       8kHz 이하에서 대부분 결정되므로 손실이 없다.
+ *   4) 게인 +16dB     — 본 증폭.
+ *   5) 리미터         — 증폭 후 피크만 눌러 클리핑(소리 깨짐) 방지. 반드시 마지막.
+ *
+ * ⚠ 게인/필터 값은 실측이 아니라 청감 기준이다. 너무 크면 잡음까지 커지고 깨지므로
+ *   실기기에서 들어보고 조정할 것. 값만 바꾸면 되도록 상수로 빼뒀다.
+ */
+private const val MIC_GAIN_DB = 16.0
+private const val MIC_HPF_HZ = 90.0        // 저역 럼블 컷
+private const val MIC_PRESENCE_HZ = 3000.0 // 자음 명료도 대역
+private const val MIC_PRESENCE_DB = 3.5
+private const val MIC_LPF_HZ = 11000.0     // 고역 히스 컷
+
+private val MIC_GAIN_FIX_JS = """
+(function(){
+  if (window.__dobedubMicGain) return;
+  window.__dobedubMicGain = true;
+  var md = navigator.mediaDevices;
+  if (!md || !md.getUserMedia) return;
+
+  var GAIN = Math.pow(10, ($MIC_GAIN_DB) / 20);   // dB → 배율
+  var orig = md.getUserMedia.bind(md);
+
+  md.getUserMedia = function (constraints) {
+    return orig(constraints).then(function (stream) {
+      try {
+        if (!constraints || !constraints.audio) return stream;
+        if (!stream.getAudioTracks || stream.getAudioTracks().length === 0) return stream;
+
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return stream;
+        var ctx = new AC();
+
+        var src = ctx.createMediaStreamSource(stream);
+
+        // 1) 저역 럼블 제거 (증폭 전에)
+        var hpf = ctx.createBiquadFilter();
+        hpf.type = 'highpass';
+        hpf.frequency.value = $MIC_HPF_HZ;
+        hpf.Q.value = 0.707;                 // 버터워스 — 통과대역이 평탄해 목소리 왜곡 없음
+
+        // 2) 자음 명료도 (프레즌스)
+        var presence = ctx.createBiquadFilter();
+        presence.type = 'peaking';
+        presence.frequency.value = $MIC_PRESENCE_HZ;
+        presence.Q.value = 1.0;
+        presence.gain.value = $MIC_PRESENCE_DB;
+
+        // 3) 고역 히스 제거
+        var lpf = ctx.createBiquadFilter();
+        lpf.type = 'lowpass';
+        lpf.frequency.value = $MIC_LPF_HZ;
+        lpf.Q.value = 0.707;
+
+        // 4) 본 증폭
+        var gain = ctx.createGain();
+        gain.gain.value = GAIN;
+
+        // 5) 리미터: 증폭으로 인한 클리핑만 억제(평상시 소리엔 거의 관여하지 않음)
+        var comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -6;
+        comp.knee.value = 6;
+        comp.ratio.value = 12;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.15;
+
+        var dest = ctx.createMediaStreamDestination();
+        src.connect(hpf); hpf.connect(presence); presence.connect(lpf);
+        lpf.connect(gain); gain.connect(comp); comp.connect(dest);
+
+        // 증폭된 오디오 트랙으로 교체하되, 원본 트랙은 사이트가 stop() 할 수 있도록
+        // 새 스트림이 끝날 때 같이 정리한다.
+        var out = dest.stream;
+        var orgTracks = stream.getAudioTracks();
+        out.getAudioTracks().forEach(function (t) {
+          var origStop = t.stop.bind(t);
+          t.stop = function () {
+            try { orgTracks.forEach(function (o) { o.stop(); }); } catch (e) {}
+            try { ctx.close(); } catch (e) {}
+            origStop();
+          };
+        });
+        // 비디오 트랙 요청이 섞여 있으면 그대로 옮겨준다.
+        if (stream.getVideoTracks) {
+          stream.getVideoTracks().forEach(function (v) { out.addTrack(v); });
+        }
+        return out;
+      } catch (e) {
+        return stream;   // 실패하면 원본 스트림 그대로 — 녹음 자체가 막히면 안 된다
+      }
+    });
+  };
 })();
 """
 
@@ -200,6 +313,20 @@ fun RestrictedWebViewScreen(
                         settings.allowContentAccess = false
                         // 사이트가 데스크탑 버전을 내려주도록 데스크탑 Chrome UA로 접속한다.
                         settings.userAgentString = DESKTOP_USER_AGENT
+
+                        // 마이크 증폭 스크립트는 반드시 **문서 시작 시점**에 넣어야 한다.
+                        // 사이트가 모듈 로드 때 getUserMedia 참조를 미리 바인딩해두면 onPageFinished
+                        // 주입은 이미 늦고(실기기 CDP로 확인함), iframe 안 코드도 못 덮는다.
+                        // addDocumentStartJavaScript 는 모든 프레임에 페이지 스크립트보다 먼저 실행된다.
+                        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                            runCatching {
+                                WebViewCompat.addDocumentStartJavaScript(
+                                    this, MIC_GAIN_FIX_JS, setOf("*")
+                                )
+                            }.onFailure { Log.w("KioskWebView", "마이크 증폭 주입 실패: ${it.message}") }
+                        } else {
+                            Log.w("KioskWebView", "DOCUMENT_START_SCRIPT 미지원 — 마이크 증폭 미적용")
+                        }
 
                         setOnLongClickListener { true } // 롱프레스 컨텍스트 메뉴(이미지 저장/링크 복사 등) 차단
                         setDownloadListener { _, _, _, _, _ ->
