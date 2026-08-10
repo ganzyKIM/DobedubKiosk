@@ -3,7 +3,9 @@ package com.dobedub.kiosk.ui.home
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -41,6 +43,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,6 +57,9 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
@@ -133,6 +139,12 @@ private val BUBBLE_LINES = listOf(
     "오늘은 빠삐뿌랑 신나게!"
 )
 
+/**
+ * 이용안내 이미지를 이만큼(px) 내려 읽기 시작하면 떠다니는 캐릭터를 숨긴다.
+ * 아이가 안내를 읽는 중에 캐릭터가 글자를 가리지 않게 하려는 것 — 위로 되돌리면 다시 나타난다.
+ */
+private const val MASCOT_HIDE_SCROLL_PX = 1000f
+
 private fun <T> List<T>.randomIndexExcept(current: Int): Int {
     if (size <= 1) return 0
     var next: Int
@@ -154,6 +166,30 @@ fun HomeScreen(
     institutionLabel: String = ""
 ) {
     var logoTapCount by remember { mutableIntStateOf(0) }
+
+    // 이용안내 영역을 얼마나 내렸는지(px 누적). LazyColumn 은 항목 높이가 제각각이라
+    // firstVisibleItemIndex 만으로는 실제 스크롤 거리를 알 수 없어, 소비된 스크롤량을
+    // 직접 누적한다. 맨 위에서 0 이 되도록 아래로 클램프한다.
+    var scrolledPx by remember { mutableFloatStateOf(0f) }
+    val scrollTracker = remember {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                // 아래로 스크롤하면 consumed.y 가 음수라 부호를 뒤집어 누적한다.
+                scrolledPx = (scrolledPx - consumed.y).coerceAtLeast(0f)
+                return Offset.Zero
+            }
+        }
+    }
+    // 임계값을 넘으면 0, 아니면 1 로 목표를 두고 부드럽게 보간 → "스르륵" 사라지고 나타난다.
+    val mascotAlpha by animateFloatAsState(
+        targetValue = if (scrolledPx >= MASCOT_HIDE_SCROLL_PX) 0f else 1f,
+        animationSpec = tween(durationMillis = 350),
+        label = "mascot-fade"
+    )
 
     BoxWithConstraints(
         modifier = Modifier
@@ -201,9 +237,20 @@ fun HomeScreen(
                 Spacer(Modifier.height(20.dp))
             }
 
-            // ── 스크롤 영역: 이용안내 이미지만. 버튼(KidCard)과 같은 44dp 라운드로 통일 ──
+            // ── 스크롤 영역: 이용안내 이미지만.
+            // 컨테이너 자체를 버튼 줄과 같은 24dp 좌우 여백으로 좁힌 뒤, 그 컨테이너의
+            // 위쪽 모서리에만 44dp 라운드를 건다(버튼과 같은 반경). 이전엔 라운드를
+            // 컨테이너 전체 폭(x=0 기준)에 걸어놓고 이미지는 그 안에서 또 18dp 만큼
+            // 더 들어가 있어서, 두 기준이 어긋나 모서리가 이상하게 파먹힌 것처럼 보였다.
+            // 지금은 컨테이너 폭 = 이미지가 실제로 보이는 폭이라 스크롤 중 어떤 조각이
+            // 맨 위로 오더라도 그 조각의 진짜 모서리가 깔끔하게 둥글게 잘린다.
             LazyColumn(
-                modifier = Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(44.dp)),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .clip(RoundedCornerShape(topStart = 44.dp, topEnd = 44.dp))
+                    .nestedScroll(scrollTracker),
                 contentPadding = PaddingValues(bottom = 40.dp)
             ) {
                 items(MANUAL_TILES) { tile ->
@@ -214,13 +261,18 @@ fun HomeScreen(
                         painter = painter,
                         contentDescription = null,
                         contentScale = ContentScale.FillWidth,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp).aspectRatio(ratio)
+                        modifier = Modifier.fillMaxWidth().aspectRatio(ratio)
                     )
                 }
             }
         }
 
-        DraggableMascot(parentW = parentW, parentH = parentH, modifier = Modifier.align(Alignment.BottomStart))
+        DraggableMascot(
+            parentW = parentW,
+            parentH = parentH,
+            alpha = mascotAlpha,
+            modifier = Modifier.align(Alignment.BottomStart)
+        )
     }
 }
 
@@ -323,7 +375,12 @@ private fun KidCard(
  * 안전하다. 영구 저장이 필요하면 DataStore에 x/y 키를 추가할 것.
  */
 @Composable
-private fun DraggableMascot(parentW: Int, parentH: Int, modifier: Modifier = Modifier) {
+private fun DraggableMascot(
+    parentW: Int,
+    parentH: Int,
+    alpha: Float = 1f,
+    modifier: Modifier = Modifier
+) {
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
     var selfW by remember { mutableIntStateOf(0) }
@@ -366,11 +423,17 @@ private fun DraggableMascot(parentW: Int, parentH: Int, modifier: Modifier = Mod
     // 바뀌는 매 프레임에 애니메이션 프레임까지 같이 바뀌며 생기는 "덜덜거림"을 줄인다.
     var animatedDrawable by remember { mutableStateOf<android.graphics.drawable.Drawable?>(null) }
 
+    // 숨겨진 동안엔 터치도 받지 않아야 한다(투명한데 눌리면 이상하다).
+    // 컴포지션에서 아예 빼버리면 드래그로 옮겨둔 위치와 표정이 초기화되므로,
+    // 그리기만 투명하게 하고 제스처는 아래에서 무시한다.
+    val interactive by rememberUpdatedState(alpha > 0.5f)
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
             .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
             .onSizeChanged { selfW = it.width; selfH = it.height }
+            .graphicsLayer { this.alpha = alpha }
             .padding(start = 18.dp, bottom = 18.dp)
     ) {
         Box(
@@ -410,6 +473,8 @@ private fun DraggableMascot(parentW: Int, parentH: Int, modifier: Modifier = Mod
                     .pointerInput(Unit) {
                         awaitEachGesture {
                             val down = awaitFirstDown()
+                            // 스크롤로 숨겨진 상태면 아무것도 소비하지 않고 흘려보낸다.
+                            if (!interactive) return@awaitEachGesture
                             (animatedDrawable as? android.graphics.drawable.Animatable)?.stop()
                             // 직전 탭의 바운스/위글 스프링이 아직 정착 중일 때 곧바로 드래그를
                             // 시작하면, 드래그로 인한 위치 이동에 스프링의 잔여 진동(스케일·회전)이
