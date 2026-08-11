@@ -24,8 +24,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.dobedub.kiosk.BuildConfig
 import com.dobedub.kiosk.admin.AdminViewModel
+import com.dobedub.kiosk.data.KioskSettingsRepository
 import com.dobedub.kiosk.ui.components.BackTopBar
 import com.dobedub.kiosk.update.AppUpdater
+import com.dobedub.kiosk.update.FleetServerDiscovery
 import kotlinx.coroutines.launch
 
 /**
@@ -44,6 +46,7 @@ fun AdminUpdateScreen(viewModel: AdminViewModel, onBack: () -> Unit) {
     var savedMessage by remember { mutableStateOf<String?>(null) }
     var updateStatus by remember { mutableStateOf<String?>(null) }
     var checking by remember { mutableStateOf(false) }
+    var scanning by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()),
@@ -62,13 +65,39 @@ fun AdminUpdateScreen(viewModel: AdminViewModel, onBack: () -> Unit) {
         )
 
         Text("함대 서버 주소 (비우면 기본값 사용)")
+        val lanPrefix = remember { FleetServerDiscovery.subnetPrefix() }
+        Text(
+            if (lanPrefix != null)
+                "같은 와이파이면 마지막 자리만 입력해도 됩니다 (예: 5 → $lanPrefix.5:8090)"
+            else "https:// 는 생략해도 됩니다",
+            style = MaterialTheme.typography.bodySmall
+        )
         OutlinedTextField(
             value = serverUrl,
             onValueChange = { serverUrl = it },
-            placeholder = { Text(BuildConfig.FLEET_SERVER_URL) },
+            placeholder = { Text(lanPrefix?.let { "5" } ?: BuildConfig.FLEET_SERVER_URL) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
+
+        Button(
+            enabled = !scanning,
+            onClick = {
+                scanning = true
+                updateStatus = "같은 와이파이에서 서버를 찾는 중…"
+                scope.launch {
+                    val found = FleetServerDiscovery.discover()
+                    if (found != null) {
+                        serverUrl = found
+                        viewModel.updateFleetServerUrl(found)
+                        updateStatus = "서버를 찾았습니다: $found"
+                    } else {
+                        updateStatus = "같은 와이파이에서 서버를 찾지 못했습니다. 주소를 직접 입력하세요."
+                    }
+                    scanning = false
+                }
+            }
+        ) { Text(if (scanning) "찾는 중…" else "이 와이파이에서 서버 자동 찾기") }
 
         Text("기관/도서관 이름 (백오피스 식별용)")
         OutlinedTextField(
@@ -79,9 +108,13 @@ fun AdminUpdateScreen(viewModel: AdminViewModel, onBack: () -> Unit) {
         )
 
         Button(onClick = {
-            viewModel.updateFleetServerUrl(serverUrl.trim())
+            // "5" 같은 축약 입력을 이 기기의 서브넷 기준으로 펼친 뒤 저장한다.
+            val normalized = KioskSettingsRepository.normalizeFleetUrl(serverUrl, lanPrefix)
+            viewModel.updateFleetServerUrl(normalized)
             viewModel.updateInstitutionLabel(label.trim())
-            savedMessage = "저장되었습니다."
+            serverUrl = normalized
+            savedMessage = if (normalized.isBlank()) "기본 서버를 사용합니다."
+                           else "저장되었습니다: $normalized"
         }) { Text("저장") }
         savedMessage?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
 
