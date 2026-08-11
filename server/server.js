@@ -76,6 +76,74 @@ function sanitizeVideoName(original) {
   return base;
 }
 
+// ---------- 영상 폴더 자동 인식 ----------
+//
+// data/videos/ 를 그냥 "영상 저장소"로 쓴다 — 폴더에 파일을 복사해 넣으면 자료실에 뜬다.
+// 대시보드 업로드 폼으로 수 GB짜리를 브라우저로 올리는 게 현장에서 제일 번거로웠다.
+//
+// 폴더가 진실이고 DB는 그 색인이다. 그래서 양방향으로 맞춘다:
+//   폴더에 있는데 DB에 없다  → 등록 (sha256 계산)
+//   DB에 있는데 폴더에 없다  → 행 제거 (배포 대기열도 함께 정리)
+//
+// ponytail: fs.watch 대신 "필요할 때 폴더 훑기". watch 는 복사가 끝나기 전에 이벤트가
+// 떠서 반쯤 쓰인 파일을 해싱하는 함정이 있고, 그걸 피하려면 결국 여기서 하는 안정성
+// 검사를 똑같이 해야 한다. 파일이 수백 개가 되면 그때 watch 를 고려할 것.
+
+/** 이 시간 안에 수정된 파일은 아직 복사 중일 수 있으므로 건너뛴다(다음 훑기에서 잡는다). */
+const MEDIA_SETTLE_MS = 10_000;
+let mediaSyncRunning = false;
+
+async function syncMediaFolder() {
+  if (mediaSyncRunning) return;          // 대시보드를 연달아 열어도 같은 파일을 두 번 해싱하지 않는다
+  mediaSyncRunning = true;
+  try {
+    let entries;
+    try {
+      entries = fs.readdirSync(VIDEO_DIR, { withFileTypes: true });
+    } catch (e) {
+      // 폴더를 못 읽으면 아무것도 하지 않는다. 여기서 "파일이 없다"고 판단해 정리로 넘어가면
+      // 경로가 잘못 잡힌 순간 자료실 전체가 지워진다.
+      console.error('[media] 폴더를 읽지 못해 동기화를 건너뜁니다:', e.message);
+      return;
+    }
+
+    const onDisk = new Map();  // 파일명 → 크기
+    for (const e of entries) {
+      if (!e.isFile()) continue;
+      if (!VIDEO_EXTENSIONS.has(path.extname(e.name).toLowerCase())) continue;
+      const full = path.join(VIDEO_DIR, e.name);
+      const st = fs.statSync(full);
+      if (Date.now() - st.mtimeMs < MEDIA_SETTLE_MS) continue;   // 아직 복사 중
+      onDisk.set(e.name, st.size);
+    }
+
+    const known = new Set(store.listMedia().map(m => m.filename));
+
+    for (const [name, size] of onDisk) {
+      if (known.has(name)) continue;
+      console.log(`[media] 새 영상 발견: ${name} (${(size / 1024 / 1024).toFixed(0)}MB) — 해시 계산 중`);
+      const sha = await sha256File(path.join(VIDEO_DIR, name));
+      const id = store.insertMedia({
+        filename: name,          // 폴더에 넣은 파일은 이름을 바꾸지 않는다 — 그 자체가 식별자다
+        original_name: name,
+        size, sha256: sha, uploaded_at: Date.now()
+      });
+      console.log(`[media] 자료실 등록 완료: ${name} (id ${id})`);
+    }
+
+    for (const m of store.listMedia()) {
+      if (onDisk.has(m.filename)) continue;
+      if (fs.existsSync(path.join(VIDEO_DIR, m.filename))) continue;  // 복사 중이라 건너뛴 것일 수 있다
+      console.log(`[media] 파일이 사라져 자료실에서 제거: ${m.filename}`);
+      store.deleteMedia(m.id);
+    }
+  } catch (e) {
+    console.error('[media] 폴더 동기화 오류', e);
+  } finally {
+    mediaSyncRunning = false;
+  }
+}
+
 function manifestFor(req, deviceRow) {
   const rel = store.getRelease();
   if (!rel) return { update: false };
@@ -214,6 +282,9 @@ app.get('/logout', (req, res) => { auth.clearSessionCookie(res); res.redirect('/
 app.get('/', (req, res) => res.redirect('/dashboard'));
 
 app.get('/dashboard', auth.requireAuth, (req, res) => {
+  // 폴더를 훑되 기다리지는 않는다. 1GB 짜리 해싱에 화면이 붙잡히면 안 된다 —
+  // 새로 넣은 파일은 다음 새로고침에 뜬다(화면에도 그렇게 안내한다).
+  syncMediaFolder();
   const devices = store.allDevices();
   // 배포 이력 페이지네이션 — 릴리스가 쌓이면 화면이 길어져 기기 목록이 밀린다.
   const REL_PER_PAGE = 10;
@@ -259,6 +330,7 @@ app.get('/dashboard', auth.requireAuth, (req, res) => {
     releases: relPage,
     relPaging: { page: relPageNum, pages: relPages, total: allReleases.length },
     media: store.listMedia(),
+    mediaDir: VIDEO_DIR,
     stats: { total: devices.length, online, offline, onLatest, versionDist },
     thresholds: { onlineMs: ONLINE_MS, staleMs: STALE_MS }
   }));
@@ -412,6 +484,8 @@ const server = app.listen(PORT, () => {
   console.log(`[두비덥 함대관리] http://localhost:${PORT}  (대시보드: /dashboard)`);
   if (!process.env.ADMIN_PASSWORD) console.log('  ⚠ ADMIN_PASSWORD 미설정 — 기본값 "dobedub" 사용 중. 운영 시 반드시 설정하세요.');
   if (!process.env.SESSION_SECRET) console.log('  ⚠ SESSION_SECRET 미설정 — 재시작 시 로그인 세션이 만료됩니다.');
+  console.log(`  영상 저장소: ${VIDEO_DIR}  (이 폴더에 넣으면 자료실에 자동 등록)`);
+  syncMediaFolder();
 });
 
 // 종료 신호를 받으면 처리 중인 요청을 끝내고 SQLite 를 정상 종료한다.
