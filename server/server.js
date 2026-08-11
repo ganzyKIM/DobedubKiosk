@@ -119,6 +119,10 @@ app.post('/api/checkin', (req, res) => {
       startUrl: b.startUrl,
       appLabel: b.appLabel,
       videos: Array.isArray(b.videos) ? b.videos.slice(0, 200) : [],
+      contact: typeof b.contactInfo === 'string' ? b.contactInfo.slice(0, 100) : null,
+      // 구버전 앱은 이 값을 안 보낸다 — undefined 를 false 로 오해해 PIN 초기화를
+      // 멋대로 확정 처리하지 않도록, boolean 일 때만 넘긴다.
+      hasCustomPin: typeof b.hasCustomPin === 'boolean' ? b.hasCustomPin : undefined,
       ip: req.ip
     });
   } catch (e) {
@@ -128,6 +132,14 @@ app.post('/api/checkin', (req, res) => {
   // 매니페스트(업데이트) + 이 기기에 대한 영상 삭제/배포 지시를 함께 응답.
   const deviceRow = store.allDevices().find(d => d.device_id === deviceId) || null;
   const resp = manifestFor(req, deviceRow);
+
+  // 관리자가 지정한 연락처가 기기가 보고한 값과 다르면 덮어쓰라고 내려보낸다.
+  // 같아지면 자동으로 안 보내지므로 별도 완료 플래그가 필요 없다.
+  if (deviceRow && deviceRow.contact_override && deviceRow.contact_override !== deviceRow.contact) {
+    resp.setContact = deviceRow.contact_override;
+  }
+  if (deviceRow && deviceRow.pin_reset) resp.resetPin = true;
+
   resp.deleteVideos = store.pendingVideoDeletes(deviceId);
   const base = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
   resp.pushVideos = store.pendingVideoPushes(deviceId).map(p => ({
@@ -305,6 +317,21 @@ app.post('/device/update-prompt', auth.requireAuth, (req, res) => {
 
 app.post('/device/label', auth.requireAuth, (req, res) => {
   if (req.body.deviceId) store.setLabel(req.body.deviceId, String(req.body.label || '').slice(0, 100));
+  res.redirect('/dashboard');
+});
+
+// 기기별 문의 연락처 지정. 빈 값으로 저장하면 지정 해제(앱 기본값 유지).
+app.post('/device/contact', auth.requireAuth, (req, res) => {
+  if (req.body.deviceId) {
+    store.setContactOverride(String(req.body.deviceId), String(req.body.contact || '').slice(0, 100));
+  }
+  res.redirect('/dashboard');
+});
+
+// 관리자 PIN 원격 초기화(0000). 현장에서 PIN을 잊었을 때의 유일한 복구 수단이라,
+// 지시가 실제로 먹혔는지는 기기가 보고하는 hasCustomPin 으로 확인한다.
+app.post('/device/pin-reset', auth.requireAuth, (req, res) => {
+  if (req.body.deviceId) store.requestPinReset(String(req.body.deviceId));
   res.redirect('/dashboard');
 });
 

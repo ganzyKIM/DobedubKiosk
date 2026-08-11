@@ -123,6 +123,22 @@ function dashboardPage({ devices, release, releases, relPaging, media, stats, th
                <button class="btn ghost" type="submit" style="padding:3px 10px;">알림 보내기</button>
              </form>`);
 
+    // 연락처: 입력칸에는 관리자가 지정한 값이 있으면 그것을, 없으면 기기가 보고한 현재 값을 보여준다.
+    // 지정값과 보고값이 다르면 아직 기기에 안 닿은 것 — 다음 체크인 때 다시 내려간다.
+    const contactPending = d.contact_override && d.contact_override !== d.contact;
+    const contactCell = `
+      <form class="inline" method="post" action="/device/contact">
+        <input type="hidden" name="deviceId" value="${esc(d.device_id)}">
+        <input name="contact" value="${esc(d.contact_override || d.contact || '')}" placeholder="02-334-2227" size="12" onchange="this.form.submit()">
+      </form>
+      ${contactPending ? '<div><span class="badge b-warn">적용 대기</span></div>' : ''}
+      <div style="margin-top:6px;">${d.pin_reset
+        ? '<span class="badge b-warn">PIN 초기화 대기중</span>'
+        : `<form class="inline" method="post" action="/device/pin-reset" onsubmit="return confirm('이 기기의 관리자 PIN을 0000 으로 초기화할까요?\\n다음 접속 시 적용됩니다.');">
+             <input type="hidden" name="deviceId" value="${esc(d.device_id)}">
+             <button class="btn ghost" type="submit" style="padding:3px 10px;">PIN 초기화</button>
+           </form>`}</div>`;
+
     // 영상: 보유 목록(삭제/삭제대기) + 배포 대기 목록(취소) + 새로 보내기.
     const vids = Array.isArray(d.videoList) ? d.videoList : [];
     const pendingDel = new Set(d.pendingDeletes || []);
@@ -172,6 +188,7 @@ function dashboardPage({ devices, release, releases, relPaging, media, stats, th
       <td>${esc(d.model || '-')}</td>
       <td>${esc(d.version_name || '?')} <span class="mono">${d.version_code == null ? '' : 'code ' + d.version_code}</span><br>${verBadge}</td>
       <td>${lock} ${batt}</td>
+      <td>${contactCell}</td>
       <td>${videoCell}</td>
       <td>${updateCell}</td>
       <td>${esc(relTime(d.last_seen))}<div class="mono">${d.checkin_count}회</div></td>
@@ -285,8 +302,8 @@ function dashboardPage({ devices, release, releases, relPaging, media, stats, th
 
     <div class="card"><h2>기기 목록 <span class="muted small">(${devices.length}대)</span></h2>
       <div class="overflow"><table>
-        <thead><tr><th>상태</th><th>기기 / 기관</th><th>모델</th><th>버전</th><th>잠금·배터리</th><th>영상</th><th>업데이트</th><th>마지막 접속</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="9" class="center muted">아직 체크인한 기기가 없습니다.</td></tr>'}</tbody>
+        <thead><tr><th>상태</th><th>기기 / 기관</th><th>모델</th><th>버전</th><th>잠금·배터리</th><th>연락처 · PIN</th><th>영상</th><th>업데이트</th><th>마지막 접속</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="10" class="center muted">아직 체크인한 기기가 없습니다.</td></tr>'}</tbody>
       </table></div>
     </div>
   `);

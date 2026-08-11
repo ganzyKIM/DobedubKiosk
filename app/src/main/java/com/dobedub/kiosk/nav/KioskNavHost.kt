@@ -19,7 +19,6 @@ import com.dobedub.kiosk.admin.ui.AdminAboutScreen
 import com.dobedub.kiosk.admin.ui.AdminContentScreen
 import com.dobedub.kiosk.admin.ui.AdminDeviceScreen
 import com.dobedub.kiosk.admin.ui.AdminInfoScreen
-import com.dobedub.kiosk.admin.ui.AdminKioskScreen
 import com.dobedub.kiosk.admin.ui.AdminMenuScreen
 import com.dobedub.kiosk.admin.ui.AdminPinScreen
 import com.dobedub.kiosk.admin.ui.AdminUpdateScreen
@@ -79,24 +78,17 @@ fun KioskNavHost(
 
         composable(Routes.ADMIN_MENU) {
             AdminMenuScreen(
-                onOpenKiosk = { navController.navigate(Routes.ADMIN_KIOSK) },
                 onOpenInfo = { navController.navigate(Routes.ADMIN_INFO) },
                 onOpenContent = { navController.navigate(Routes.ADMIN_CONTENT) },
                 onOpenDevice = { navController.navigate(Routes.ADMIN_DEVICE) },
                 onOpenWifi = { navController.navigate(Routes.ADMIN_WIFI) },
                 onOpenUpdate = { navController.navigate(Routes.ADMIN_UPDATE) },
                 onOpenAbout = { navController.navigate(Routes.ADMIN_ABOUT) },
-                onExit = { goHome() }
-            )
-        }
-
-        composable(Routes.ADMIN_KIOSK) {
-            AdminKioskScreen(
                 onExitKiosk = { onExitKiosk(); goHome() },
                 onReenterKiosk = onReenterKiosk,
                 onReboot = onReboot,
                 onReleaseDeviceOwner = { onReleaseDeviceOwner(); goHome() },
-                onBack = { navController.popBackStack() }
+                onExit = { goHome() }
             )
         }
 
