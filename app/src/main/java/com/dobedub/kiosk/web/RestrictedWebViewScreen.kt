@@ -118,16 +118,23 @@ private const val READER_HEIGHT_FIX_JS = """
  * ⚠ 게인/필터 값은 실측이 아니라 청감 기준이다. 너무 크면 잡음까지 커지고 깨지므로
  *   실기기에서 들어보고 조정할 것. 값만 바꾸면 되도록 상수로 빼뒀다.
  */
-private const val MIC_GAIN_DB = 30.0       // 본 증폭 (16dB로는 부족했다)
+// 소리 크기는 "생짜 게인"이 아니라 **컴프레서로 평균 레벨을 올려서** 만든다.
+// 30dB 생게인은 충분히 컸지만 신호가 리미터에 계속 처박히며 지직거렸다(왜곡).
+// 프리게인을 낮추고, 완만한 컴프레서로 작은 소리를 끌어올린 뒤 메이크업으로 보충하면
+// 체감 크기는 비슷하면서 훨씬 깨끗하다.
+private const val MIC_PREGAIN_DB = 18.0    // 1차 증폭 (30 → 18, 왜곡 제거)
+private const val MIC_MAKEUP_DB = 6.0      // 컴프 후 보충 게인
 private const val MIC_HPF_HZ = 90.0        // 저역 럼블 컷
 private const val MIC_PRESENCE_HZ = 3000.0 // 자음 명료도 대역
-private const val MIC_PRESENCE_DB = 3.5
+private const val MIC_PRESENCE_DB = 3.0
 private const val MIC_LPF_HZ = 11000.0     // 고역 히스 컷
 
-// 리미터 임계값. 이걸 낮게 잡으면(예전 -6dB) 증폭한 신호 대부분이 압축비에 걸려 눌려서
-// 게인을 올려도 실제로는 거의 안 커진다 — 16dB가 작게 들렸던 주된 이유가 이것이었다.
-// 0dBFS 바로 아래에서 "진짜 피크만" 잡도록 올려서 게인이 그대로 살아나게 한다.
-private const val MIC_LIMIT_DB = -1.5
+// 레벨링 컴프레서: 작은 소리를 끌어올려 평균 레벨을 높인다(체감 볼륨의 주역).
+// attack 을 1ms 처럼 너무 빠르게 잡으면 파형 자체가 일그러져 지직거린다 — 10ms 로 완만하게.
+private const val MIC_COMP_THRESHOLD_DB = -20.0
+private const val MIC_COMP_RATIO = 3.5
+// 안전 리미터: 마지막에 진짜 피크만 막는다. 헤드룸을 2dB 남겨 하드클리핑을 피한다.
+private const val MIC_LIMIT_DB = -2.0
 
 private val MIC_GAIN_FIX_JS = """
 (function(){
@@ -136,7 +143,8 @@ private val MIC_GAIN_FIX_JS = """
   var md = navigator.mediaDevices;
   if (!md || !md.getUserMedia) return;
 
-  var GAIN = Math.pow(10, ($MIC_GAIN_DB) / 20);   // dB → 배율
+  var PREGAIN = Math.pow(10, ($MIC_PREGAIN_DB) / 20);   // dB → 배율
+  var MAKEUP  = Math.pow(10, ($MIC_MAKEUP_DB) / 20);
   var orig = md.getUserMedia.bind(md);
 
   md.getUserMedia = function (constraints) {
@@ -170,23 +178,36 @@ private val MIC_GAIN_FIX_JS = """
         lpf.frequency.value = $MIC_LPF_HZ;
         lpf.Q.value = 0.707;
 
-        // 4) 본 증폭
-        var gain = ctx.createGain();
-        gain.gain.value = GAIN;
+        // 4) 1차 증폭
+        var pre = ctx.createGain();
+        pre.gain.value = PREGAIN;
 
-        // 5) 리미터: 0dBFS 직전의 진짜 피크만 잡는다.
-        //    threshold 를 낮게 잡으면 증폭분이 전부 압축비에 먹혀 게인이 사라지므로
-        //    -1.5dB 로 올리고, 대신 knee 0 / 높은 ratio / 빠른 attack 으로 확실히 막는다.
+        // 5) 레벨링 컴프레서 — 체감 볼륨의 주역.
+        //    작은 소리를 끌어올려 평균 레벨을 높인다. knee 를 넓게(12) 두고 attack 을
+        //    10ms 로 완만히 잡아야 파형이 안 일그러진다(1ms 로 조였더니 지직거렸다).
         var comp = ctx.createDynamicsCompressor();
-        comp.threshold.value = $MIC_LIMIT_DB;
-        comp.knee.value = 0;
-        comp.ratio.value = 20;
-        comp.attack.value = 0.001;
-        comp.release.value = 0.10;
+        comp.threshold.value = $MIC_COMP_THRESHOLD_DB;
+        comp.knee.value = 12;
+        comp.ratio.value = $MIC_COMP_RATIO;
+        comp.attack.value = 0.010;
+        comp.release.value = 0.20;
+
+        // 6) 메이크업 게인 — 컴프로 눌린 만큼 보충
+        var makeup = ctx.createGain();
+        makeup.gain.value = MAKEUP;
+
+        // 7) 안전 리미터 — 마지막에 진짜 피크만. 헤드룸 2dB 를 남겨 하드클리핑을 피한다.
+        var limiter = ctx.createDynamicsCompressor();
+        limiter.threshold.value = $MIC_LIMIT_DB;
+        limiter.knee.value = 2;
+        limiter.ratio.value = 12;
+        limiter.attack.value = 0.003;
+        limiter.release.value = 0.08;
 
         var dest = ctx.createMediaStreamDestination();
         src.connect(hpf); hpf.connect(presence); presence.connect(lpf);
-        lpf.connect(gain); gain.connect(comp); comp.connect(dest);
+        lpf.connect(pre); pre.connect(comp); comp.connect(makeup);
+        makeup.connect(limiter); limiter.connect(dest);
 
         // 증폭된 오디오 트랙으로 교체하되, 원본 트랙은 사이트가 stop() 할 수 있도록
         // 새 스트림이 끝날 때 같이 정리한다.
