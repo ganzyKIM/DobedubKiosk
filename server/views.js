@@ -76,7 +76,7 @@ function loginPage(error) {
     </div>`);
 }
 
-function dashboardPage({ devices, release, releases, media, stats, thresholds }) {
+function dashboardPage({ devices, release, releases, relPaging, media, stats, thresholds }) {
   // 임계값은 반드시 server.js 에서 받아 쓴다 — 여기에 따로 박아두면 앱 체크인 주기가
   // 바뀌었을 때 서버 집계와 표시가 어긋난다(실제로 그래서 정상 기기가 "대기"로 보였다).
   const online = thresholds.onlineMs;
@@ -245,11 +245,17 @@ function dashboardPage({ devices, release, releases, media, stats, thresholds })
       <p class="muted small" style="margin:8px 0 0;">versionCode 는 앱 <span class="mono">build.gradle.kts</span> 의 값과 동일하게 입력하세요. 기존보다 높아야 기기들이 자동 업데이트합니다.</p>
     </div>
 
-    <div class="card"><h2>배포 이력</h2>
+    <div class="card" id="rel"><h2>배포 이력 <span class="muted small">(전체 ${relPaging ? relPaging.total : (releases||[]).length}개)</span></h2>
       <div class="overflow"><table>
         <thead><tr><th>버전</th><th>크기</th><th>업로드</th><th>메모</th><th></th></tr></thead>
         <tbody>${releaseHistoryRows || '<tr><td colspan="5" class="center muted">이력이 없습니다.</td></tr>'}</tbody>
       </table></div>
+      ${relPaging && relPaging.pages > 1 ? `
+      <div class="row" style="justify-content:center;gap:6px;margin-top:12px;">
+        ${relPaging.page > 1 ? `<a class="btn ghost" href="/dashboard?relPage=${relPaging.page - 1}#rel">이전</a>` : ''}
+        <span class="muted small">${relPaging.page} / ${relPaging.pages} 페이지</span>
+        ${relPaging.page < relPaging.pages ? `<a class="btn ghost" href="/dashboard?relPage=${relPaging.page + 1}#rel">다음</a>` : ''}
+      </div>` : ''}
       <p class="muted small" style="margin:8px 0 0;">롤백은 기존에 올려둔 APK 파일을 그대로 다시 배포판으로 지정한다(재업로드 불필요). 기기들은 다음 체크인 때 이 버전을 감지해 자동 설치한다.</p>
     </div>
 

@@ -198,6 +198,12 @@ app.get('/', (req, res) => res.redirect('/dashboard'));
 
 app.get('/dashboard', auth.requireAuth, (req, res) => {
   const devices = store.allDevices();
+  // 배포 이력 페이지네이션 — 릴리스가 쌓이면 화면이 길어져 기기 목록이 밀린다.
+  const REL_PER_PAGE = 10;
+  const allReleases = store.listReleases();
+  const relPages = Math.max(1, Math.ceil(allReleases.length / REL_PER_PAGE));
+  const relPageNum = Math.min(relPages, Math.max(1, Number(req.query.relPage) || 1));
+  const relPage = allReleases.slice((relPageNum - 1) * REL_PER_PAGE, relPageNum * REL_PER_PAGE);
   const release = store.getRelease();
   const now = Date.now();
   const distMap = new Map();
@@ -233,7 +239,8 @@ app.get('/dashboard', auth.requireAuth, (req, res) => {
 
   res.type('html').send(views.dashboardPage({
     devices, release,
-    releases: store.listReleases(),
+    releases: relPage,
+    relPaging: { page: relPageNum, pages: relPages, total: allReleases.length },
     media: store.listMedia(),
     stats: { total: devices.length, online, offline, onLatest, versionDist },
     thresholds: { onlineMs: ONLINE_MS, staleMs: STALE_MS }

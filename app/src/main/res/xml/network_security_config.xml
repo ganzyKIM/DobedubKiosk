@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false" />
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">dobedub.com</domain>
-        <!-- 로컬 개발/테스트용(adb reverse 로 PC 서버 접속). 운영 함대 서버는 HTTPS 사용. -->
-        <domain includeSubdomains="true">localhost</domain>
-        <domain includeSubdomains="true">127.0.0.1</domain>
-        <domain includeSubdomains="true">10.0.2.2</domain>
-    </domain-config>
+    <!--
+      평문(HTTP)을 전면 허용한다. 함대 서버를 같은 공유기 안의 PC(사설 IP)로 두고 쓰는데,
+      network-security-config 는 IP 대역 와일드카드(192.168.*)를 지원하지 않아 사설 대역만
+      골라서 열 방법이 없기 때문이다.
+      위험은 제한적이다 — 웹뷰가 여는 사이트는 코드(DomainWhitelist)로 화이트리스트가 강제되고
+      그 사이트들은 전부 HTTPS다. 이 완화는 함대 서버(로컬 PC) 접속을 위한 것이다.
+      공인 주소로 운영 전환하면 다시 false 로 조이는 것을 검토할 것.
+    -->
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

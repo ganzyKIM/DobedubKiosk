@@ -106,7 +106,45 @@ class KioskSettingsRepository(private val context: Context) {
     }
 
     suspend fun setFleetServerUrl(url: String) {
-        context.dataStore.edit { it[Keys.FLEET_SERVER_URL] = url.trim() }
+        context.dataStore.edit { it[Keys.FLEET_SERVER_URL] = normalizeFleetUrl(url) }
+    }
+
+    companion object {
+        /** 로컬 서버 기본 포트 — 입력에 포트가 없으면 이걸 붙인다. */
+        const val DEFAULT_FLEET_PORT = 8090
+
+        /**
+         * 태블릿에서 손으로 치는 글자를 최대한 줄이기 위한 입력 보정.
+         * `5` → `http://192.168.0.5:8090` 식으로, 같은 공유기 안에서는 **마지막 한 자리만**
+         * 쳐도 되게 한다(매번 긴 주소를 치는 게 현장에서 가장 큰 불편이었다).
+         *
+         *   ""                      → "" (빈 값 = 빌드 기본 서버 사용)
+         *   "5"        (숫자만)     → http://<이 기기 서브넷>.5:8090
+         *   "192.168.0.5"           → http://192.168.0.5:8090
+         *   "192.168.0.5:9000"      → http://192.168.0.5:9000
+         *   "example.com"           → https://example.com   (공인 도메인은 https)
+         *   "https://..." / "http://..." → 그대로
+         */
+        fun normalizeFleetUrl(raw: String, lanPrefix: String? = null): String {
+            val s = raw.trim().removeSuffix("/")
+            if (s.isEmpty()) return ""
+            if (s.startsWith("http://") || s.startsWith("https://")) return s
+
+            // 숫자 한두 자리만 입력 → 현재 서브넷의 해당 호스트로 확장
+            if (s.all { it.isDigit() } && s.length <= 3) {
+                val prefix = lanPrefix ?: return s   // 서브넷을 모르면 손대지 않는다
+                return "http://$prefix.$s:$DEFAULT_FLEET_PORT"
+            }
+
+            val hasPort = Regex(""":\d+$""").containsMatchIn(s)
+            val isIp = Regex("""^\d{1,3}(\.\d{1,3}){3}(:\d+)?$""").matches(s)
+            return when {
+                isIp && hasPort -> "http://$s"
+                isIp -> "http://$s:$DEFAULT_FLEET_PORT"
+                hasPort -> "http://$s"               // 호스트명+포트는 로컬로 간주
+                else -> "https://$s"                 // 공인 도메인
+            }
+        }
     }
 
     suspend fun setInstitutionLabel(label: String) {
