@@ -122,23 +122,18 @@ private const val READER_HEIGHT_FIX_JS = """
 // 30dB 생게인은 충분히 컸지만 신호가 리미터에 계속 처박히며 지직거렸다(왜곡).
 // 프리게인을 낮추고, 완만한 컴프레서로 작은 소리를 끌어올린 뒤 메이크업으로 보충하면
 // 체감 크기는 비슷하면서 훨씬 깨끗하다.
-private const val MIC_PREGAIN_DB = 18.0    // 1차 증폭 (30 → 18, 왜곡 제거)
-private const val MIC_MAKEUP_DB = 6.0      // 컴프 후 보충 게인
+private const val MIC_PREGAIN_DB = 22.0    // 고정 증폭 비중을 늘려 레벨 변동을 줄인다
+private const val MIC_MAKEUP_DB = 4.0      // 컴프 후 보충 게인
 private const val MIC_HPF_HZ = 90.0        // 저역 럼블 컷
 private const val MIC_PRESENCE_HZ = 3000.0 // 자음 명료도 대역
 private const val MIC_PRESENCE_DB = 3.0
 private const val MIC_LPF_HZ = 8000.0      // 고역 히스 컷 (11k→8k: "취익" 하는 히스가 여기 있다.
                                            //  한국어 명료도는 8kHz 이하에서 결정돼 손실 없음)
 
-// 노이즈 게이트 — 말이 끊긴 구간에서 컴프레서가 게인을 끌어올려 마이크 히스가
-// "취익" 하고 부풀어 오르는 현상(펌핑)을 막는다. 이 레벨 아래면 소리를 낮춰버린다.
-private const val MIC_GATE_THRESHOLD_DB = -50.0
-private const val MIC_GATE_FLOOR = 0.06    // 완전 무음(0)으로 끊으면 부자연스러워 살짝 남긴다
-
 // 레벨링 컴프레서: 작은 소리를 끌어올려 평균 레벨을 높인다(체감 볼륨의 주역).
 // attack 을 1ms 처럼 너무 빠르게 잡으면 파형 자체가 일그러져 지직거린다 — 10ms 로 완만하게.
-private const val MIC_COMP_THRESHOLD_DB = -20.0
-private const val MIC_COMP_RATIO = 3.5
+private const val MIC_COMP_THRESHOLD_DB = -18.0
+private const val MIC_COMP_RATIO = 2.5     // 3.5→2.5: 압축이 셀수록 목소리가 커졌다 작아졌다 한다
 // 안전 리미터: 마지막에 진짜 피크만 막는다. 헤드룸을 2dB 남겨 하드클리핑을 피한다.
 private const val MIC_LIMIT_DB = -2.0
 
@@ -184,31 +179,7 @@ private val MIC_GAIN_FIX_JS = """
         lpf.frequency.value = $MIC_LPF_HZ;
         lpf.Q.value = 0.707;
 
-        // 4) 노이즈 게이트 — 조용한 구간을 눌러 히스가 증폭되지 않게 한다.
-        //    Web Audio 에 게이트 노드가 없어 "레벨 측정 → 게인 조절"로 직접 만든다.
-        //    판정용 분석기는 별도 분기라 오디오 경로에는 영향이 없다.
-        var gate = ctx.createGain();
-        gate.gain.value = 1;
-        var det = ctx.createAnalyser();
-        det.fftSize = 1024;
-        lpf.connect(det);
-        var dbuf = new Float32Array(det.fftSize);
-        var gateOpen = true;
-        var gateTimer = setInterval(function () {
-          det.getFloatTimeDomainData(dbuf);
-          var sum = 0;
-          for (var i = 0; i < dbuf.length; i++) sum += dbuf[i] * dbuf[i];
-          var db = 20 * Math.log10(Math.sqrt(sum / dbuf.length) || 1e-9);
-          var shouldOpen = db > ($MIC_GATE_THRESHOLD_DB);
-          if (shouldOpen !== gateOpen) {
-            gateOpen = shouldOpen;
-            // 열 때는 빠르게(말머리를 안 자르도록), 닫을 때는 천천히(뚝뚝 끊기지 않도록)
-            gate.gain.setTargetAtTime(
-              gateOpen ? 1 : ($MIC_GATE_FLOOR), ctx.currentTime, gateOpen ? 0.008 : 0.10);
-          }
-        }, 30);
-
-        // 5) 1차 증폭
+        // 4) 1차 증폭
         var pre = ctx.createGain();
         pre.gain.value = PREGAIN;
 
@@ -236,7 +207,7 @@ private val MIC_GAIN_FIX_JS = """
 
         var dest = ctx.createMediaStreamDestination();
         src.connect(hpf); hpf.connect(presence); presence.connect(lpf);
-        lpf.connect(gate); gate.connect(pre); pre.connect(comp); comp.connect(makeup);
+        lpf.connect(pre); pre.connect(comp); comp.connect(makeup);
         makeup.connect(limiter); limiter.connect(dest);
 
         // 증폭된 오디오 트랙으로 교체하되, 원본 트랙은 사이트가 stop() 할 수 있도록
@@ -247,7 +218,6 @@ private val MIC_GAIN_FIX_JS = """
           var origStop = t.stop.bind(t);
           t.stop = function () {
             try { orgTracks.forEach(function (o) { o.stop(); }); } catch (e) {}
-            try { clearInterval(gateTimer); } catch (e) {}
             try { ctx.close(); } catch (e) {}
             origStop();
           };
