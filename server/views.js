@@ -123,6 +123,18 @@ function dashboardPage({ devices, release, releases, relPaging, media, stats, th
                <button class="btn ghost" type="submit" style="padding:3px 10px;">알림 보내기</button>
              </form>`);
 
+    // 설치 장소. 1차 근거는 접속 AP — 납품 태블릿은 Google 위치 정확도(NLP)가 꺼진 채로
+    // 나가서 실내 좌표가 거의 안 잡힌다. 좌표는 잡히는 기기에서만 덤으로 붙는다.
+    const locParts = [];
+    if (d.ap_ssid) {
+      locParts.push(`<div class="mono">📶 ${esc(d.ap_ssid)}</div>`);
+      if (d.ap_bssid) locParts.push(`<div class="mono">${esc(d.ap_bssid)}</div>`);
+    }
+    if (d.lat != null && d.lng != null) {
+      locParts.push(`<a class="mono" href="https://www.google.com/maps?q=${d.lat},${d.lng}" target="_blank" rel="noopener noreferrer">📍 ${d.lat.toFixed(5)}, ${d.lng.toFixed(5)} (±${Math.round(d.loc_accuracy || 0)}m, ${esc(relTime(d.located_at))})</a>`);
+    }
+    const locCell = locParts.join('') || '<div class="mono">위치 정보 없음</div>';
+
     // 연락처: 입력칸에는 관리자가 지정한 값이 있으면 그것을, 없으면 기기가 보고한 현재 값을 보여준다.
     // 지정값과 보고값이 다르면 아직 기기에 안 닿은 것 — 다음 체크인 때 다시 내려간다.
     const contactPending = d.contact_override && d.contact_override !== d.contact;
@@ -184,6 +196,7 @@ function dashboardPage({ devices, release, releases, relPaging, media, stats, th
           <input name="label" value="${esc(d.app_label || '')}" placeholder="기관명" size="12" onchange="this.form.submit()">
         </form>
         <div class="mono">${esc(d.device_id)}</div>
+        ${locCell}
       </td>
       <td>${esc(d.model || '-')}</td>
       <td>${esc(d.version_name || '?')} <span class="mono">${d.version_code == null ? '' : 'code ' + d.version_code}</span><br>${verBadge}</td>

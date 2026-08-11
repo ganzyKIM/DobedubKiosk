@@ -10,6 +10,8 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import com.dobedub.kiosk.BuildConfig
+import com.dobedub.kiosk.admin.LocationHelper
+import com.dobedub.kiosk.admin.WifiHelper
 import com.dobedub.kiosk.data.KioskSettings
 import com.dobedub.kiosk.data.KioskSettingsRepository
 import com.dobedub.kiosk.video.VideoRepository
@@ -133,7 +135,21 @@ class AppUpdater(private val context: Context) {
             // 이게 없으면 지시를 보낸 뒤 반영 여부를 알 길이 없어, 응답이 유실돼도 모른 채 지나간다.
             put("contactInfo", s.contactInfo)
             put("hasCustomPin", s.hasPinConfigured)
+            // 이 태블릿이 어느 도서관에 있는지 가려내기 위한 정보.
+            // 접속 AP 는 항상 잡히고, 좌표는 NLP(Google 위치 정확도)가 켜진 기기에서만 나온다.
+            WifiHelper.connectedAp(context)?.let { ap ->
+                put("apSsid", ap.ssid)
+                put("apBssid", ap.bssid)
+            }
+            LocationHelper.lastKnown(context)?.let { fix ->
+                put("lat", fix.lat)
+                put("lng", fix.lng)
+                put("locAccuracy", fix.accuracyM.toDouble())
+                put("locatedAt", fix.atMillis)
+            }
         }
+        // 다음 체크인이 최신 좌표를 싣도록 갱신만 걸어둔다(결과는 기다리지 않는다).
+        LocationHelper.refreshInBackground(context)
 
         val conn = (URL("$baseUrl/api/checkin").openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"

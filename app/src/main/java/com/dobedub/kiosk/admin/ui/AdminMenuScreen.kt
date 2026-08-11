@@ -5,8 +5,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -118,20 +120,6 @@ fun AdminMenuScreen(
 
         updateStatus?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            OutlinedButton(
-                onClick = { showRebootConfirm = true },
-                modifier = Modifier.weight(1f)
-            ) { Text("기기 재부팅") }
-            OutlinedButton(
-                onClick = { showReleaseConfirm = true },
-                modifier = Modifier.weight(1f)
-            ) { Text("완전 해제", color = AccentRed) }
-        }
-
         entries.forEach { entry ->
             Column(
                 modifier = Modifier
@@ -144,6 +132,23 @@ fun AdminMenuScreen(
                 Text(entry.title, style = MaterialTheme.typography.titleMedium)
                 Text(entry.subtitle, color = LabelSecondary)
             }
+        }
+
+        // 재부팅과 완전 해제는 화면 맨 아래. 다른 버튼을 누르러 왔다가 스쳐 누를 일이 없는
+        // 자리에 두고, 둘 다 확인창을 한 번 거치게 한다.
+        Spacer(Modifier.height(24.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            OutlinedButton(
+                onClick = { showRebootConfirm = true },
+                modifier = Modifier.weight(1f)
+            ) { Text("기기 재부팅") }
+            OutlinedButton(
+                onClick = { showReleaseConfirm = true },
+                modifier = Modifier.weight(1f)
+            ) { Text("키오스크 완전 해제", color = AccentRed) }
         }
     }
 

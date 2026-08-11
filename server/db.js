@@ -32,6 +32,12 @@ CREATE TABLE IF NOT EXISTS devices (
   contact       TEXT,                  -- 기기가 실제로 쓰고 있다고 보고한 문의 연락처
   contact_override TEXT,               -- 관리자가 이 기기에 지정한 연락처(NULL이면 미지정=기기 기본값 사용)
   pin_reset     INTEGER NOT NULL DEFAULT 0, -- 1이면 다음 체크인 때 관리자 PIN을 0000으로 되돌리라고 지시
+  ap_ssid       TEXT,                  -- 접속 중인 Wi-Fi AP 이름 (설치 장소 식별의 1차 근거)
+  ap_bssid      TEXT,                  -- 그 AP의 MAC — 같은 SSID가 여러 곳에 있어도 구분된다
+  lat           REAL,                  -- 좌표(NLP 켜진 기기에서만 나온다. 대개 null)
+  lng           REAL,                  -- 경도
+  loc_accuracy  REAL,                  -- 반경 오차(m)
+  located_at    INTEGER,               -- 그 좌표를 잡은 시각(epoch ms) — 체크인 시각과 다를 수 있다
   first_seen    INTEGER NOT NULL,     -- epoch ms
   last_seen     INTEGER NOT NULL,     -- epoch ms
   checkin_count INTEGER NOT NULL DEFAULT 0
@@ -98,7 +104,13 @@ for (const stmt of [
   `ALTER TABLE devices ADD COLUMN update_prompt INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE devices ADD COLUMN contact TEXT`,
   `ALTER TABLE devices ADD COLUMN contact_override TEXT`,
-  `ALTER TABLE devices ADD COLUMN pin_reset INTEGER NOT NULL DEFAULT 0`
+  `ALTER TABLE devices ADD COLUMN pin_reset INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE devices ADD COLUMN ap_ssid TEXT`,
+  `ALTER TABLE devices ADD COLUMN ap_bssid TEXT`,
+  `ALTER TABLE devices ADD COLUMN lat REAL`,
+  `ALTER TABLE devices ADD COLUMN lng REAL`,
+  `ALTER TABLE devices ADD COLUMN loc_accuracy REAL`,
+  `ALTER TABLE devices ADD COLUMN located_at INTEGER`
 ]) {
   try { db.exec(stmt); } catch (e) { /* already exists */ }
 }
@@ -125,9 +137,12 @@ try {
 
 const stmtUpsert = db.prepare(`
 INSERT INTO devices (device_id, model, serial, version_code, version_name, battery,
-                     kiosk_locked, start_url, app_label, ip, videos, contact, first_seen, last_seen, checkin_count)
+                     kiosk_locked, start_url, app_label, ip, videos, contact,
+                     ap_ssid, ap_bssid, lat, lng, loc_accuracy, located_at,
+                     first_seen, last_seen, checkin_count)
 VALUES (@device_id, @model, @serial, @version_code, @version_name, @battery,
-        @kiosk_locked, @start_url, @app_label, @ip, @videos, @contact, @now, @now, 1)
+        @kiosk_locked, @start_url, @app_label, @ip, @videos, @contact,
+        @ap_ssid, @ap_bssid, @lat, @lng, @loc_accuracy, @located_at, @now, @now, 1)
 ON CONFLICT(device_id) DO UPDATE SET
   model        = excluded.model,
   serial       = excluded.serial,
@@ -140,6 +155,14 @@ ON CONFLICT(device_id) DO UPDATE SET
   ip           = excluded.ip,
   videos       = excluded.videos,
   contact      = excluded.contact,
+  -- 위치 관련 값은 있을 때만 갱신한다. 위치를 못 잡은 체크인이 한 번 끼었다고 마지막으로
+  -- 알던 설치 위치까지 지워버리면, 오히려 정보가 줄어든다.
+  ap_ssid      = COALESCE(excluded.ap_ssid, devices.ap_ssid),
+  ap_bssid     = COALESCE(excluded.ap_bssid, devices.ap_bssid),
+  lat          = COALESCE(excluded.lat, devices.lat),
+  lng          = COALESCE(excluded.lng, devices.lng),
+  loc_accuracy = COALESCE(excluded.loc_accuracy, devices.loc_accuracy),
+  located_at   = COALESCE(excluded.located_at, devices.located_at),
   last_seen    = excluded.last_seen,
   checkin_count = devices.checkin_count + 1
 `);
@@ -196,6 +219,12 @@ function recordCheckin(d) {
     ip: d.ip || null,
     videos: JSON.stringify(videos),
     contact: d.contact || null,
+    ap_ssid: d.apSsid || null,
+    ap_bssid: d.apBssid || null,
+    lat: Number.isFinite(d.lat) ? d.lat : null,
+    lng: Number.isFinite(d.lng) ? d.lng : null,
+    loc_accuracy: Number.isFinite(d.locAccuracy) ? d.locAccuracy : null,
+    located_at: Number.isFinite(d.locatedAt) ? d.locatedAt : null,
     now
   });
 

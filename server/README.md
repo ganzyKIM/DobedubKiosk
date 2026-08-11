@@ -121,7 +121,12 @@ Windows 상시 구동은 [NSSM](https://nssm.cc/) 등으로 `node server.js` 를
 ## API 요약
 
 - `POST /api/checkin` — body `{deviceId, model, versionCode, versionName, battery, kioskLocked,
-  startUrl, appLabel, videos, contactInfo, hasCustomPin}`.
+  startUrl, appLabel, videos, contactInfo, hasCustomPin, apSsid, apBssid, lat?, lng?,
+  locAccuracy?, locatedAt?}`.
+  - `apSsid`/`apBssid` — 접속 중인 Wi-Fi AP. **설치 장소 식별의 1차 근거다.** 좌표는 납품
+    태블릿 대부분에서 안 잡힌다(Google 위치 정확도가 꺼진 채로 나감 → `network` provider
+    비활성 → 실내에서 GPS만 남아 fix 불가). AP는 항상 잡힌다.
+  - `lat`/`lng` 등 좌표는 NLP가 켜진 기기에서만 온다. 없으면 서버가 기존 값을 유지한다.
   응답 `{update, versionCode, versionName, apkUrl, sha256, size, promptUpdate, deleteVideos,
   pushVideos, setContact?, resetPin?}`.
   - `promptUpdate: true` — 관리자가 이 기기에 확인창 요청을 걸어뒀다는 뜻(§강제 업데이트 알림).
