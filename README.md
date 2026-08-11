@@ -1,8 +1,8 @@
 # 두비덥 도서관 키오스크 (DobedubKiosk)
 
 Lenovo TB-J606F 태블릿을 도서관 납품용 키오스크로 잠그는 Android 앱 + 원격 관리 서버.
-기획 배경/디자인 근거/리스크는 [기획문서.md](기획문서.md) 참고. 현재 버전 **1.0**
-(`versionCode=5`) — 아동용 리디자인 + 원격 관리(업데이트/영상/롤백/강제알림) 첫 완성 지점.
+기획 배경/디자인 근거/리스크는 [기획문서.md](기획문서.md) 참고. 현재 버전 **1.8**
+(`versionCode=13`). 버전별 변경 이력은 CLAUDE.md "현재 상태" 참고.
 프로젝트 전체 컨텍스트·최근 변경사항은 [CLAUDE.md](CLAUDE.md) 참고.
 
 ## 빌드
@@ -52,8 +52,8 @@ powershell -ExecutionPolicy Bypass -File .\setup-tablet.ps1 -SkipVideo # 영상 
   관리자가 요청한 기기는 조용히 설치하지 않고 홈 화면에 확인창을 띄운다.
 - 서버/백오피스: `server/` (Node.js + SQLite), 대시보드 `/dashboard` — 배포 버전 이력/롤백,
   영상 자료실(업로드 후 기기별 배포), 강제 업데이트 알림.
-- 도서관처럼 이 서버와 다른 네트워크에 있는 태블릿을 관리하려면 **공인 HTTPS 주소**가 필수다
-  (사설 IP는 앱이 자체적으로 차단). `server/start-tunnel.ps1`로 임시 주소를 만들 수 있다.
+- 같은 와이파이면 관리자 화면의 **"서버 자동 찾기"** 가 서브넷을 스캔해 주소를 자동 입력한다.
+  다른 네트워크(도서관)에 있는 태블릿은 **공인 HTTPS 주소**가 필요하다 — `server/start-tunnel.ps1`.
 - 전체 개요·서명 키 주의사항: **[원격관리_업데이트.md](원격관리_업데이트.md)**, 서버 운영: **[server/README.md](server/README.md)**
 
 > ⚠ **서명 키**: 업데이트는 같은 키로 서명된 APK만 가능하다. `release-keystore.jks` + `keystore.properties`
