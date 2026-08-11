@@ -118,11 +118,16 @@ private const val READER_HEIGHT_FIX_JS = """
  * ⚠ 게인/필터 값은 실측이 아니라 청감 기준이다. 너무 크면 잡음까지 커지고 깨지므로
  *   실기기에서 들어보고 조정할 것. 값만 바꾸면 되도록 상수로 빼뒀다.
  */
-private const val MIC_GAIN_DB = 16.0
+private const val MIC_GAIN_DB = 30.0       // 본 증폭 (16dB로는 부족했다)
 private const val MIC_HPF_HZ = 90.0        // 저역 럼블 컷
 private const val MIC_PRESENCE_HZ = 3000.0 // 자음 명료도 대역
 private const val MIC_PRESENCE_DB = 3.5
 private const val MIC_LPF_HZ = 11000.0     // 고역 히스 컷
+
+// 리미터 임계값. 이걸 낮게 잡으면(예전 -6dB) 증폭한 신호 대부분이 압축비에 걸려 눌려서
+// 게인을 올려도 실제로는 거의 안 커진다 — 16dB가 작게 들렸던 주된 이유가 이것이었다.
+// 0dBFS 바로 아래에서 "진짜 피크만" 잡도록 올려서 게인이 그대로 살아나게 한다.
+private const val MIC_LIMIT_DB = -1.5
 
 private val MIC_GAIN_FIX_JS = """
 (function(){
@@ -169,13 +174,15 @@ private val MIC_GAIN_FIX_JS = """
         var gain = ctx.createGain();
         gain.gain.value = GAIN;
 
-        // 5) 리미터: 증폭으로 인한 클리핑만 억제(평상시 소리엔 거의 관여하지 않음)
+        // 5) 리미터: 0dBFS 직전의 진짜 피크만 잡는다.
+        //    threshold 를 낮게 잡으면 증폭분이 전부 압축비에 먹혀 게인이 사라지므로
+        //    -1.5dB 로 올리고, 대신 knee 0 / 높은 ratio / 빠른 attack 으로 확실히 막는다.
         var comp = ctx.createDynamicsCompressor();
-        comp.threshold.value = -6;
-        comp.knee.value = 6;
-        comp.ratio.value = 12;
-        comp.attack.value = 0.003;
-        comp.release.value = 0.15;
+        comp.threshold.value = $MIC_LIMIT_DB;
+        comp.knee.value = 0;
+        comp.ratio.value = 20;
+        comp.attack.value = 0.001;
+        comp.release.value = 0.10;
 
         var dest = ctx.createMediaStreamDestination();
         src.connect(hpf); hpf.connect(presence); presence.connect(lpf);
