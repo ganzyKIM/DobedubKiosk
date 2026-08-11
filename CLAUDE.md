@@ -126,7 +126,7 @@ TB-J606F 내장 마이크가 약해 더빙 목소리가 원본 성우보다 훨�
 | `server/start-tunnel.ps1` | 공인 HTTPS 원격 접속 경로(Cloudflare Quick Tunnel) 실행 스크립트 |
 | `기획문서.md` | 최초 기획 배경 |
 
-## 현재 상태 (2026-08-11) — v2.0 / `versionCode=16`
+## 현재 상태 (2026-08-11) — v2.0.1 / `versionCode=17`
 
 `versionCode`는 절대 되돌리지 말 것(업데이트 트리거 기준). versionName은 v1.0에서 한 번
 리셋했고 이후 계속 올라간다.
@@ -159,11 +159,18 @@ TB-J606F 내장 마이크가 약해 더빙 목소리가 원본 성우보다 훨�
   - 설치 장소 보고(어느 도서관에 있는지 확인용). **1차 근거는 좌표가 아니라 접속 AP의
     SSID/BSSID다.** 납품 태블릿은 계정 없이 프로비저닝돼서 **Google 위치 정확도(NLP)가
     꺼진 채로 나가고**, 그러면 `network` provider가 `enabled=false`라 실내에서 좌표가
-    영원히 안 잡힌다(GPS만 남는데 실내 fix 불가). 실측으로 확인한 사실:
+    거의 안 잡힌다(GPS만 남는데 하늘이 안 보이는 자리면 fix 불가). 실측으로 확인한 사실:
     - `settings put secure location_mode 3` 로는 안 켜진다. NLP 토글은 AOSP 설정이 아니라
       Play 서비스 내부 설정이라 adb/DPM으로 못 건드린다. 사람이 설정 화면에서 켜야 한다.
     - API 30의 `getProviders(true)` 는 **`fused` 를 반환하지 않는다**(API 31에서야 공개 상수).
       처음에 `network`/`gps` 를 하드코딩했다가 요청이 전부 GPS로만 나갔다.
+    - **`requestSingleUpdate` 는 쓰지 말 것.** 30초 만에 만료된다(dumpsys 의 `expireIn=+30s0ms`).
+      콜드 스타트 GPS 는 ephemeris 수신 때문에 야외에서도 30초~수 분이 걸려서, 잡힐 수 있는
+      자리에서도 못 잡게 만든다. `requestLocationUpdates` + 3분 예산 + 첫 fix 시 즉시 해제로
+      바꿨고, 체크인마다 요청이 쌓이지 않게 `inFlight` 플래그로 막는다(전에 3개가 겹쳐 있었다).
+    - 사무실 태블릿 실측: 27시간 동안 `sv status messages 0`, `CN0 보고 0`, GNSS 소비전력
+      `0.0mAh`. 약한 신호조차 없다 = 하늘이 전혀 안 보이는 자리. 다만 **"실내면 무조건 불가"는
+      아니다** — 창가면 잡힌다. 자리에 따라 다르다.
     좌표 코드는 남겨뒀다 — NLP가 켜진 기기나 실외에서는 값이 붙는다. 체크인은 **마지막으로
     알던 좌표를 즉시 보내고 갱신은 백그라운드로만** 건다(위치 때문에 체크인이 지연되면 안 된다).
     값이 없는 체크인이 와도 서버는 기존 값을 지우지 않는다(`COALESCE`).
