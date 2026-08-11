@@ -76,7 +76,7 @@ function loginPage(error) {
     </div>`);
 }
 
-function dashboardPage({ devices, release, releases, relPaging, media, stats, thresholds }) {
+function dashboardPage({ devices, release, releases, relPaging, media, mediaDir, stats, thresholds }) {
   // 임계값은 반드시 server.js 에서 받아 쓴다 — 여기에 따로 박아두면 앱 체크인 주기가
   // 바뀌었을 때 서버 집계와 표시가 어긋난다(실제로 그래서 정상 기기가 "대기"로 보였다).
   const online = thresholds.onlineMs;
@@ -290,11 +290,20 @@ function dashboardPage({ devices, release, releases, relPaging, media, stats, th
     </div>
 
     <div class="card"><h2>영상 자료실</h2>
+      <div style="background:color-mix(in srgb,var(--brand) 12%,transparent);border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+        <div style="font-weight:700;margin-bottom:4px;">📂 이 폴더에 영상을 복사해 넣으세요</div>
+        <div class="mono" style="word-break:break-all;font-size:13px;">${esc(mediaDir || '')}</div>
+        <div class="muted small" style="margin-top:6px;">
+          넣으면 자동으로 자료실에 등록된다(복사가 끝난 뒤 <b>새로고침</b> — 큰 파일은 해시 계산에 몇 초 걸린다).
+          폴더에서 파일을 지우면 자료실에서도 사라진다.
+        </div>
+      </div>
+      <p class="muted small" style="margin:0 0 8px;">브라우저로 올려도 된다(원격에서 작업할 때):</p>
       <form method="post" action="/media/upload" enctype="multipart/form-data" class="row">
         <input type="file" name="video" accept=".mp4,.m4v,.mkv,.webm" required>
         <button class="btn" type="submit">영상 업로드</button>
       </form>
-      <p class="muted small" style="margin:8px 0 16px;">업로드한 영상은 여기 보관되며, 아래 기기 목록에서 원하는 기기를 골라 개별 배포한다. 대용량 파일이라 업로드에 시간이 걸릴 수 있다.</p>
+      <p class="muted small" style="margin:8px 0 16px;">자료실 영상은 아래 기기 목록에서 원하는 기기를 골라 개별 배포한다.</p>
       <div class="overflow"><table>
         <thead><tr><th>파일</th><th>크기</th><th>업로드</th><th></th></tr></thead>
         <tbody>${media.map(m => `<tr>
