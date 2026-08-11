@@ -123,6 +123,11 @@ app.post('/api/checkin', (req, res) => {
       // 구버전 앱은 이 값을 안 보낸다 — undefined 를 false 로 오해해 PIN 초기화를
       // 멋대로 확정 처리하지 않도록, boolean 일 때만 넘긴다.
       hasCustomPin: typeof b.hasCustomPin === 'boolean' ? b.hasCustomPin : undefined,
+      // 설치 장소 식별용. AP는 항상 잡히지만 좌표는 NLP 켜진 기기에서만 온다.
+      apSsid: typeof b.apSsid === 'string' ? b.apSsid.slice(0, 64) : null,
+      apBssid: typeof b.apBssid === 'string' ? b.apBssid.slice(0, 32) : null,
+      lat: Number(b.lat), lng: Number(b.lng),
+      locAccuracy: Number(b.locAccuracy), locatedAt: Number(b.locatedAt),
       ip: req.ip
     });
   } catch (e) {

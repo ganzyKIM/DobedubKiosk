@@ -50,7 +50,8 @@ fun AdminWifiScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var status by remember { mutableStateOf(WifiHelper.currentStatus(context)) }
+    // 상태 문자열도 binder IPC 로 읽어오므로 초기값을 여기서 동기로 구하지 않는다.
+    var status by remember { mutableStateOf("확인 중…") }
     var networks by remember { mutableStateOf<List<WifiHelper.Network>>(emptyList()) }
     var scanning by remember { mutableStateOf(false) }
     var pendingNetwork by remember { mutableStateOf<WifiHelper.Network?>(null) }
@@ -102,9 +103,11 @@ fun AdminWifiScreen(onBack: () -> Unit) {
             Switch(
                 checked = wifiOn,
                 onCheckedChange = { enabled ->
-                    WifiHelper.setWifiEnabled(context, enabled)
-                    status = WifiHelper.currentStatus(context)
-                    if (enabled) rescan() else networks = emptyList()
+                    scope.launch {
+                        WifiHelper.setWifiEnabled(context, enabled)
+                        status = WifiHelper.currentStatus(context)
+                        if (enabled) rescan() else networks = emptyList()
+                    }
                 },
                 modifier = Modifier.padding(start = 12.dp)
             )
