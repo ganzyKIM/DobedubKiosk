@@ -66,6 +66,18 @@ class KioskSettingsRepository(private val context: Context) {
         }
     }
 
+    /**
+     * PIN을 공장 기본값(0000)으로 되돌린다. 해시/솔트를 지우면 [KioskSettings.hasPinConfigured]
+     * 가 false가 되어 다시 [DEFAULT_ADMIN_PIN] 으로 들어갈 수 있다.
+     * 백오피스의 원격 초기화(비밀번호 분실 대비)에서만 호출한다.
+     */
+    suspend fun clearAdminPin() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(Keys.ADMIN_PIN_HASH)
+            prefs.remove(Keys.ADMIN_PIN_SALT)
+        }
+    }
+
     suspend fun verifyAdminPin(pin: String): Boolean {
         val current = currentSettings()
         val salt = current.adminPinSalt ?: return false

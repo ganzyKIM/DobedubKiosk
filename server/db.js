@@ -29,6 +29,9 @@ CREATE TABLE IF NOT EXISTS devices (
   ip            TEXT,                  -- 체크인 시 원격 IP
   videos        TEXT,                  -- 기기에 든 영상 인벤토리 JSON: [{name,size}]
   update_prompt INTEGER NOT NULL DEFAULT 0, -- 1이면 다음 체크인 때 "업데이트 하시겠어요?" 확인창을 띄우라고 지시
+  contact       TEXT,                  -- 기기가 실제로 쓰고 있다고 보고한 문의 연락처
+  contact_override TEXT,               -- 관리자가 이 기기에 지정한 연락처(NULL이면 미지정=기기 기본값 사용)
+  pin_reset     INTEGER NOT NULL DEFAULT 0, -- 1이면 다음 체크인 때 관리자 PIN을 0000으로 되돌리라고 지시
   first_seen    INTEGER NOT NULL,     -- epoch ms
   last_seen     INTEGER NOT NULL,     -- epoch ms
   checkin_count INTEGER NOT NULL DEFAULT 0
@@ -92,7 +95,10 @@ CREATE INDEX IF NOT EXISTS idx_checkins_device ON checkins(device_id, at);
 // 기존 DB에 없을 수 있는 컬럼을 안전하게 추가(이미 있으면 무시).
 for (const stmt of [
   `ALTER TABLE devices ADD COLUMN videos TEXT`,
-  `ALTER TABLE devices ADD COLUMN update_prompt INTEGER NOT NULL DEFAULT 0`
+  `ALTER TABLE devices ADD COLUMN update_prompt INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE devices ADD COLUMN contact TEXT`,
+  `ALTER TABLE devices ADD COLUMN contact_override TEXT`,
+  `ALTER TABLE devices ADD COLUMN pin_reset INTEGER NOT NULL DEFAULT 0`
 ]) {
   try { db.exec(stmt); } catch (e) { /* already exists */ }
 }
@@ -119,9 +125,9 @@ try {
 
 const stmtUpsert = db.prepare(`
 INSERT INTO devices (device_id, model, serial, version_code, version_name, battery,
-                     kiosk_locked, start_url, app_label, ip, videos, first_seen, last_seen, checkin_count)
+                     kiosk_locked, start_url, app_label, ip, videos, contact, first_seen, last_seen, checkin_count)
 VALUES (@device_id, @model, @serial, @version_code, @version_name, @battery,
-        @kiosk_locked, @start_url, @app_label, @ip, @videos, @now, @now, 1)
+        @kiosk_locked, @start_url, @app_label, @ip, @videos, @contact, @now, @now, 1)
 ON CONFLICT(device_id) DO UPDATE SET
   model        = excluded.model,
   serial       = excluded.serial,
@@ -133,6 +139,7 @@ ON CONFLICT(device_id) DO UPDATE SET
   app_label    = COALESCE(excluded.app_label, devices.app_label),
   ip           = excluded.ip,
   videos       = excluded.videos,
+  contact      = excluded.contact,
   last_seen    = excluded.last_seen,
   checkin_count = devices.checkin_count + 1
 `);
@@ -171,6 +178,7 @@ const stmtInsertCheckin = db.prepare(
 );
 
 const stmtClearPrompt = db.prepare(`UPDATE devices SET update_prompt = 0 WHERE device_id = ?`);
+const stmtClearPinReset = db.prepare(`UPDATE devices SET pin_reset = 0 WHERE device_id = ?`);
 
 function recordCheckin(d) {
   const now = Date.now();
@@ -187,8 +195,13 @@ function recordCheckin(d) {
     app_label: d.appLabel || null,
     ip: d.ip || null,
     videos: JSON.stringify(videos),
+    contact: d.contact || null,
     now
   });
+
+  // PIN 초기화 확정 처리: 기기가 "이제 사용자 지정 PIN 없음"이라고 보고하면 지시가 먹힌 것.
+  // 지시를 내려보낼 때가 아니라 이 보고를 받았을 때 내려야, 응답이 유실된 경우 다시 보낸다.
+  if (d.hasCustomPin === false) stmtClearPinReset.run(d.deviceId);
   stmtInsertCheckin.run(d.deviceId, Number.isFinite(d.versionCode) ? d.versionCode : null,
     Number.isFinite(d.battery) ? d.battery : null, now);
 
@@ -283,6 +296,22 @@ function requestUpdatePromptForOutdated() {
   return ids.length;
 }
 
+// ---------- 기기별 원격 설정(연락처 / PIN 초기화) ----------
+
+const stmtSetContactOverride = db.prepare(`UPDATE devices SET contact_override = ? WHERE device_id = ?`);
+/**
+ * 이 기기의 문의 연락처를 지정한다. 빈 문자열이면 지정 해제(기기 기본값 02-334-2227 유지).
+ * 별도 "적용 완료" 플래그를 두지 않는다 — 기기가 체크인마다 현재 값을 보고하므로,
+ * override 와 보고값이 같아질 때까지 지시가 자동으로 재전송된다.
+ */
+function setContactOverride(deviceId, text) {
+  stmtSetContactOverride.run(text && text.trim() ? text.trim() : null, deviceId);
+}
+
+const stmtRequestPinReset = db.prepare(`UPDATE devices SET pin_reset = 1 WHERE device_id = ?`);
+/** 다음 체크인 때 이 기기의 관리자 PIN을 0000으로 되돌리라고 지시한다(비밀번호 분실 대비). */
+function requestPinReset(deviceId) { stmtRequestPinReset.run(deviceId); }
+
 // ---------- 영상 자료실 ----------
 
 const stmtInsertMedia = db.prepare(`
@@ -314,5 +343,6 @@ module.exports = {
   queueVideoPush, pendingVideoPushes, clearVideoPush,
   getRelease, listReleases, getReleaseById, insertRelease, setReleaseFilename, activateRelease,
   requestUpdatePrompt, requestUpdatePromptForOutdated,
+  setContactOverride, requestPinReset,
   insertMedia, setMediaFilename, listMedia, getMedia, deleteMedia
 };

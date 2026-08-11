@@ -4,7 +4,6 @@ object Routes {
     const val HOME = "home"
     const val ADMIN_PIN = "admin_pin"
     const val ADMIN_MENU = "admin_menu"
-    const val ADMIN_KIOSK = "admin_kiosk"
     const val ADMIN_INFO = "admin_info"
     const val ADMIN_CONTENT = "admin_content"
     const val ADMIN_DEVICE = "admin_device"

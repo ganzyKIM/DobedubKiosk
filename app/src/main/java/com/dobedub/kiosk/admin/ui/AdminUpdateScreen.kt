@@ -19,14 +19,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.dobedub.kiosk.BuildConfig
 import com.dobedub.kiosk.admin.AdminViewModel
 import com.dobedub.kiosk.data.KioskSettingsRepository
 import com.dobedub.kiosk.ui.components.BackTopBar
-import com.dobedub.kiosk.update.AppUpdater
 import com.dobedub.kiosk.update.FleetServerDiscovery
 import kotlinx.coroutines.launch
 
@@ -37,15 +35,12 @@ import kotlinx.coroutines.launch
 @Composable
 fun AdminUpdateScreen(viewModel: AdminViewModel, onBack: () -> Unit) {
     val settings by viewModel.settings.collectAsState()
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val updater = remember { AppUpdater(context.applicationContext) }
 
     var serverUrl by remember(settings.fleetServerUrl) { mutableStateOf(settings.fleetServerUrl) }
     var label by remember(settings.institutionLabel) { mutableStateOf(settings.institutionLabel) }
     var savedMessage by remember { mutableStateOf<String?>(null) }
     var updateStatus by remember { mutableStateOf<String?>(null) }
-    var checking by remember { mutableStateOf(false) }
     var scanning by remember { mutableStateOf(false) }
 
     Column(
@@ -117,34 +112,9 @@ fun AdminUpdateScreen(viewModel: AdminViewModel, onBack: () -> Unit) {
                            else "저장되었습니다: $normalized"
         }) { Text("저장") }
         savedMessage?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
-
-        Button(
-            enabled = !checking,
-            onClick = {
-                checking = true
-                updateStatus = "서버에 확인 중…"
-                scope.launch {
-                    val result = updater.runOnce(canInstallNow = { true })
-                    updateStatus = when (result) {
-                        is AppUpdater.Result.UpToDate -> "최신 상태입니다. (서버 버전 code ${result.serverVersion})"
-                        is AppUpdater.Result.Updating -> "새 버전(code ${result.toVersion}) 설치를 시작합니다. 곧 앱이 재시작됩니다."
-                        is AppUpdater.Result.Deferred -> "새 버전이 있습니다(code ${result.toVersion})."
-                        // 관리자가 이 화면에서 직접 버튼을 눌렀다는 것 자체가 이미 확인 의사이므로
-                        // 별도 확인창 없이 바로 설치한다(홈 화면에서만 뜨는 팝업은 원격 알림 전용).
-                        is AppUpdater.Result.NeedsConfirmation -> {
-                            when (val installed = updater.installConfirmed(result.manifest)) {
-                                is AppUpdater.Result.Updating -> "새 버전(code ${installed.toVersion}) 설치를 시작합니다. 곧 앱이 재시작됩니다."
-                                is AppUpdater.Result.Failed -> installed.reason
-                                else -> "업데이트 처리 중입니다."
-                            }
-                        }
-                        is AppUpdater.Result.Failed -> result.reason
-                        AppUpdater.Result.NoServer -> "서버 주소가 설정되지 않았습니다."
-                    }
-                    checking = false
-                }
-            }
-        ) { Text(if (checking) "확인 중…" else "지금 업데이트 확인") }
         updateStatus?.let { Text(it) }
+
+        // "지금 업데이트 확인"은 관리자 메뉴 첫 화면으로 옮겼다 — 가장 자주 누르는 버튼인데
+        // 서버 주소 설정 화면 안에 묻혀 있어서 매번 한 단계 더 들어가야 했다.
     }
 }

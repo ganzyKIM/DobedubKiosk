@@ -120,18 +120,38 @@ Windows 상시 구동은 [NSSM](https://nssm.cc/) 등으로 `node server.js` 를
 
 ## API 요약
 
-- `POST /api/checkin` — body `{deviceId, model, versionCode, versionName, battery, kioskLocked, startUrl, appLabel, videos}`.
-  응답 `{update, versionCode, versionName, apkUrl, sha256, size, promptUpdate, deleteVideos, pushVideos}`.
+- `POST /api/checkin` — body `{deviceId, model, versionCode, versionName, battery, kioskLocked,
+  startUrl, appLabel, videos, contactInfo, hasCustomPin}`.
+  응답 `{update, versionCode, versionName, apkUrl, sha256, size, promptUpdate, deleteVideos,
+  pushVideos, setContact?, resetPin?}`.
   - `promptUpdate: true` — 관리자가 이 기기에 확인창 요청을 걸어뒀다는 뜻(§강제 업데이트 알림).
   - `deleteVideos: string[]` — 기기가 삭제해야 할 영상 파일명 목록.
   - `pushVideos: {name,url,sha256,size}[]` — 기기가 내려받아야 할 영상 목록.
+  - `setContact: string` — 이 기기의 문의 연락처를 이 값으로 바꾸라는 지시.
+  - `resetPin: true` — 관리자 PIN을 공장 기본값 0000 으로 되돌리라는 지시(PIN 분실 복구).
 - `GET /api/latest` — 현재 매니페스트(디버그용, 기기 컨텍스트가 없어 `promptUpdate`는 항상 false).
 - `GET /download/app.apk` — 현재 활성 배포 APK.
 - `GET /media/:id/download` — 영상 자료실 파일(공개, Range 지원 — 대용량 이어받기 가능).
 
 대시보드 폼이 호출하는 관리용 라우트(로그인 필요): `/release/upload`, `/release/rollback`,
-`/release/notify-outdated`, `/device/update-prompt`, `/device/label`, `/device/delete`,
-`/device/video/delete`, `/media/upload`, `/media/push`, `/media/push/cancel`, `/media/delete`.
+`/release/notify-outdated`, `/device/update-prompt`, `/device/label`, `/device/contact`,
+`/device/pin-reset`, `/device/delete`, `/device/video/delete`, `/media/upload`, `/media/push`,
+`/media/push/cancel`, `/media/delete`.
+
+### 지시가 먹혔는지 확인하는 방식
+
+`setContact`/`resetPin` 은 **보냈다고 완료 처리하지 않는다.** 응답이 유실되면 지시가
+조용히 사라지는데, PIN 초기화는 현장에서 유일한 복구 수단이라 그러면 안 된다.
+대신 기기가 체크인마다 자기 현재 상태(`contactInfo`, `hasCustomPin`)를 같이 보고하고,
+서버는 그 보고를 보고 판단한다.
+
+| 지시 | 재전송 조건 | 완료 판정 |
+|---|---|---|
+| `setContact` | `contact_override` ≠ 기기가 보고한 `contact` | 두 값이 같아지면 자동으로 안 보냄 |
+| `resetPin` | `pin_reset = 1` | 기기가 `hasCustomPin: false` 를 보고하면 플래그 해제 |
+
+`hasCustomPin` 을 안 보내는 구버전 앱(v1.9 이하)의 체크인은 완료 판정에 쓰지 않는다 —
+값 없음을 false 로 오해하면 지시가 실행되지도 않은 채 지워진다.
 
 ## 관리자 PC에서 24시간 운영하기 (현재 방식)
 

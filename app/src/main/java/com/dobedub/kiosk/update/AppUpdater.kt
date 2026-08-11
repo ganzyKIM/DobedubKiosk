@@ -10,6 +10,7 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import com.dobedub.kiosk.BuildConfig
+import com.dobedub.kiosk.data.KioskSettings
 import com.dobedub.kiosk.data.KioskSettingsRepository
 import com.dobedub.kiosk.video.VideoRepository
 import kotlinx.coroutines.Dispatchers
@@ -66,7 +67,7 @@ class AppUpdater(private val context: Context) {
         if (baseUrl.isBlank()) return@withContext Result.NoServer
 
         val manifest = try {
-            checkIn(baseUrl, s.institutionLabel, s.startUrl)
+            checkIn(baseUrl, s)
         } catch (e: Exception) {
             Log.w(TAG, "check-in 실패: ${e.message}")
             return@withContext Result.Failed("서버 접속 실패: ${e.message}")
@@ -111,7 +112,7 @@ class AppUpdater(private val context: Context) {
         Result.Failed("업데이트 실패: ${e.message}")
     }
 
-    private fun checkIn(baseUrl: String, label: String, startUrl: String): Manifest {
+    private suspend fun checkIn(baseUrl: String, s: KioskSettings): Manifest {
         val videosJson = org.json.JSONArray().apply {
             videoRepo.inventory().forEach { (name, size) ->
                 put(JSONObject().apply { put("name", name); put("size", size) })
@@ -125,9 +126,13 @@ class AppUpdater(private val context: Context) {
             put("versionName", BuildConfig.VERSION_NAME)
             put("battery", batteryPercent())
             put("kioskLocked", isLockTaskActive())
-            put("startUrl", startUrl)
-            put("appLabel", label)
+            put("startUrl", s.startUrl)
+            put("appLabel", s.institutionLabel)
             put("videos", videosJson)
+            // 아래 두 값은 백오피스가 "지시가 실제로 먹혔는지" 확인하는 데 쓴다.
+            // 이게 없으면 지시를 보낸 뒤 반영 여부를 알 길이 없어, 응답이 유실돼도 모른 채 지나간다.
+            put("contactInfo", s.contactInfo)
+            put("hasCustomPin", s.hasPinConfigured)
         }
 
         val conn = (URL("$baseUrl/api/checkin").openConnection() as HttpURLConnection).apply {
@@ -147,6 +152,21 @@ class AppUpdater(private val context: Context) {
         if (code !in 200..299) throw RuntimeException("HTTP $code")
 
         val json = JSONObject(body)
+
+        // 백오피스가 지시한 문의 연락처 덮어쓰기. 값이 이미 같으면 DataStore 를 건드리지 않는다
+        // (체크인마다 쓰기가 발생하면 settingsFlow 가 매번 방출돼 화면이 불필요하게 재구성된다).
+        val setContact = json.optString("setContact", "")
+        if (setContact.isNotBlank() && setContact != s.contactInfo) {
+            settings.setContactInfo(setContact)
+            Log.i(TAG, "백오피스 지시로 문의 연락처 변경: $setContact")
+        }
+
+        // 관리자가 PIN을 분실했을 때의 원격 초기화. 해시를 지우면 기본값 0000 으로 되돌아간다.
+        // 서버는 다음 체크인의 hasCustomPin=false 를 보고 지시가 먹혔음을 확인하고 플래그를 내린다.
+        if (json.optBoolean("resetPin", false) && s.hasPinConfigured) {
+            settings.clearAdminPin()
+            Log.i(TAG, "백오피스 지시로 관리자 PIN 초기화(0000)")
+        }
 
         // 백오피스가 지시한 영상 삭제 실행(원격 영상 관리).
         val toDelete = json.optJSONArray("deleteVideos")

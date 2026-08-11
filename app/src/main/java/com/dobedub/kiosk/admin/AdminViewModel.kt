@@ -100,10 +100,6 @@ class AdminViewModel(private val repository: KioskSettingsRepository) : ViewMode
         repository.setBrightness(brightness)
     }
 
-    fun updateContactInfo(text: String) = viewModelScope.launch {
-        repository.setContactInfo(text)
-    }
-
     fun updateFleetServerUrl(url: String) = viewModelScope.launch {
         repository.setFleetServerUrl(url)
     }
