@@ -10,6 +10,7 @@
     3. Android System WebView 업데이트 (동봉 APK)
     4. 키오스크 APK 설치
     5. Device Owner 지정
+    5.5 화면 회전 고정 — 자동회전/스마트회전 끄고 세로 고정
     6. 기본 앱(블로트웨어) 정리 — 키오스크에 불필요한 소비자 앱만 제거
     7. 샘플 동영상 투입 (이미 있으면 건너뜀)
     8. 앱 실행 + 최종 검증
@@ -324,6 +325,23 @@ if ($alreadyOwner) {
     } else {
         Die "Device Owner 지정 실패:`n       $($r.Text.Trim())`n`n       대개 원인은 (1) 계정이 남아있음 (2) 이미 다른 프로필이 설정됨.`n       공장초기화 후 초기 설정에서 계정 로그인을 건너뛴 상태로 다시 시도하세요."
     }
+}
+
+# ---------- 5.5 화면 회전 고정 (세로) ----------
+# 앱 자체는 매니페스트로 portrait 고정이지만, 그것만으로는 홈/설정/시스템UI 가 가로로 돌아간다.
+# OS 레벨에서 자동회전과 Lenovo '스마트 회전'을 모두 끄고 0도(세로)로 못박는다.
+Head "5.5 화면 회전 고정 (세로)"
+$RotationSettings = @(
+    @{ Ns = "system"; Key = "accelerometer_rotation"; Val = "0"; Desc = "자동 회전 끄기" },
+    @{ Ns = "system"; Key = "user_rotation";          Val = "0"; Desc = "세로(0도) 고정" },
+    @{ Ns = "secure"; Key = "smartrotate_is_show";    Val = "0"; Desc = "Lenovo 스마트 회전 끄기" },
+    @{ Ns = "secure"; Key = "camera_autorotate";      Val = "0"; Desc = "얼굴인식 자동회전 끄기 (Android 12+)" }
+)
+foreach ($s in $RotationSettings) {
+    Adb shell settings put $s.Ns $s.Key $s.Val | Out-Null
+    $now = (Adb shell settings get $s.Ns $s.Key).Text.Trim()
+    if ($now -eq $s.Val) { Ok "$($s.Desc)  ($($s.Ns)/$($s.Key)=$now)" }
+    else { Warn "$($s.Desc) 적용 안 됨 (현재값: $now) — 이 기종에 없는 설정일 수 있습니다" }
 }
 
 # ---------- 6. 기본 앱(블로트웨어) 정리 ----------
