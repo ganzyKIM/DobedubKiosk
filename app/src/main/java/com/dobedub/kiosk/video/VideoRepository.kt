@@ -45,11 +45,20 @@ class VideoRepository(private val context: Context) {
         if (!isValidName(name)) return false
         val target = File(videosDir(), name)
         return try {
-            target.exists() && target.parentFile == videosDir() && target.delete()
+            val ok = target.exists() && target.parentFile == videosDir() && target.delete()
+            if (ok) thumbFileFor(name)?.delete()   // 썸네일도 함께 — 남으면 영영 안 지워지는 고아 파일
+            ok
         } catch (e: Exception) {
             false
         }
     }
+
+    /**
+     * 백오피스에서 등록한 커스텀 썸네일 파일 위치: 같은 폴더의 `<영상파일명>.jpg`.
+     * 확장자가 SUPPORTED_EXTENSIONS 밖이라 영상 목록/인벤토리 스캔에는 절대 안 잡힌다.
+     */
+    fun thumbFileFor(name: String): File? =
+        if (!isValidName(name)) null else File(videosDir(), "$name.jpg")
 
     /**
      * 백오피스 지시로 새 영상을 내려받아 저장한다. 최종 파일명과 같은 videos 폴더 안에

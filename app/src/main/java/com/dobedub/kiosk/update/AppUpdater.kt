@@ -213,6 +213,27 @@ class AppUpdater(private val context: Context) {
             }
         }
 
+        // 백오피스에서 등록한 썸네일 동기화. 서버가 "이 기기가 보유한 영상 중 썸네일이 있는
+        // 것"만 보내주므로, 여기서는 없는 것과 크기가 달라진 것(=교체됨)만 내려받는다.
+        // 몇십 KB짜리라 sha 검증까지는 하지 않는다 — 깨져도 다음 체크인에 크기가 안 맞아 재수신.
+        val thumbs = json.optJSONArray("thumbs")
+        if (thumbs != null) {
+            for (i in 0 until thumbs.length()) {
+                val item = thumbs.optJSONObject(i) ?: continue
+                val name = item.optString("name", "")
+                val url = item.optString("url", "")
+                if (name.isBlank() || url.isBlank()) continue
+                val dest = videoRepo.thumbFileFor(name) ?: continue
+                if (dest.exists() && dest.length() == item.optLong("size", -1)) continue
+                try {
+                    downloadSmallFile(url, dest)
+                    Log.i(TAG, "썸네일 내려받음: $name")
+                } catch (e: Exception) {
+                    Log.w(TAG, "썸네일 다운로드 실패($name): ${e.message}")
+                }
+            }
+        }
+
         return Manifest(
             update = json.optBoolean("update", false),
             versionCode = json.optInt("versionCode", 0),
@@ -222,6 +243,26 @@ class AppUpdater(private val context: Context) {
             size = json.optLong("size", 0),
             promptUpdate = json.optBoolean("promptUpdate", false)
         )
+    }
+
+    /** 썸네일처럼 작은 파일 하나를 임시 파일로 받은 뒤 원자적으로 제자리에 놓는다. */
+    private fun downloadSmallFile(url: String, dest: File) {
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15000
+            readTimeout = 15000
+        }
+        try {
+            if (conn.responseCode !in 200..299) throw RuntimeException("HTTP ${conn.responseCode}")
+            val tmp = File(dest.parentFile, "${dest.name}.downloading")
+            conn.inputStream.use { input -> tmp.outputStream().use { input.copyTo(it) } }
+            // 교체(덮어쓰기) rename 이 실패하는 파일시스템 대비 폴백
+            if (!tmp.renameTo(dest)) {
+                dest.delete()
+                if (!tmp.renameTo(dest)) throw RuntimeException("rename 실패")
+            }
+        } finally {
+            conn.disconnect()
+        }
     }
 
     /** 이미 보유 중이면(=백오피스가 아직 확정 처리 전 재전송한 경우 등) 다시 받지 않는다. */
