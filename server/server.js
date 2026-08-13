@@ -60,6 +60,17 @@ const uploadVideo = multer({
   limits: { fileSize: 4 * 1024 * 1024 * 1024 } // 4GB
 });
 
+// 썸네일: 몇백 KB짜리 이미지 하나. 어떤 포맷이 와도 `<영상파일명>.jpg` 이름으로 저장한다 —
+// 브라우저도 기기(BitmapFactory)도 내용을 보고 디코딩하므로 확장자가 실체와 달라도 무방하고,
+// 이름을 영상에 1:1로 묶어두면 별도 매핑 테이블이 필요 없다.
+const uploadThumb = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, VIDEO_DIR),
+    filename: (req, file, cb) => cb(null, `thumb-upload-${Date.now()}.tmp`)
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+});
+
 function sha256File(p) {
   return new Promise((resolve, reject) => {
     const h = crypto.createHash('sha256');
@@ -135,6 +146,7 @@ async function syncMediaFolder() {
       if (onDisk.has(m.filename)) continue;
       if (fs.existsSync(path.join(VIDEO_DIR, m.filename))) continue;  // 복사 중이라 건너뛴 것일 수 있다
       console.log(`[media] 파일이 사라져 자료실에서 제거: ${m.filename}`);
+      if (m.thumb) { try { fs.unlinkSync(path.join(VIDEO_DIR, m.thumb)); } catch (e) { /* */ } }
       store.deleteMedia(m.id);
     }
   } catch (e) {
@@ -221,6 +233,18 @@ app.post('/api/checkin', (req, res) => {
     sha256: p.sha256,
     size: p.size
   }));
+  // 기기가 보유했다고 방금 보고한 영상 중 썸네일이 등록된 것들. 기기는 없는 것만(또는
+  // 크기가 달라진 것만) 내려받는다. 지금 push 로 내려가는 영상의 썸네일은 다음 체크인에
+  // 인벤토리에 잡히면서 따라간다 — 경로를 하나로 유지하기 위한 의도적 지연.
+  const invNames = new Set((Array.isArray(b.videos) ? b.videos : []).map(v => v && v.name));
+  resp.thumbs = store.listMedia()
+    .filter(m => m.thumb && invNames.has(m.original_name))
+    .map(m => {
+      let size = 0;
+      try { size = fs.statSync(path.join(VIDEO_DIR, m.thumb)).size; } catch (e) { return null; }
+      return { name: m.original_name, url: `${base.replace(/\/$/, '')}/media/${m.id}/thumb`, size };
+    })
+    .filter(Boolean);
   return res.json(resp);
 });
 
@@ -262,6 +286,15 @@ app.get('/media/:id/download', (req, res) => {
   if (!fs.existsSync(p)) return res.status(404).send('file missing');
   res.setHeader('Content-Type', 'video/mp4');
   res.setHeader('Content-Disposition', `attachment; filename="${media.original_name}"`);
+  res.sendFile(p);
+});
+
+// 썸네일 제공. 영상 다운로드와 같은 이유로 인증 없이 연다(기기가 세션 없이 받아간다).
+app.get('/media/:id/thumb', (req, res) => {
+  const media = store.getMedia(Number(req.params.id));
+  if (!media || !media.thumb) return res.status(404).send('thumb not found');
+  const p = path.join(VIDEO_DIR, media.thumb);
+  if (!fs.existsSync(p)) return res.status(404).send('file missing');
   res.sendFile(p);
 });
 
@@ -345,6 +378,14 @@ app.post('/release/upload', auth.requireAuth, uploadApk.single('apk'), async (re
       fs.unlinkSync(req.file.path);
       return res.status(400).send('versionCode(정수)와 versionName 을 올바르게 입력하세요.');
     }
+    const notes = String(req.body.notes || '').slice(0, 500);
+    // U+FFFD(�)가 섞였다는 것은 UTF-8이 아닌 바이트가 왔다는 뜻 — 저장해봐야 복구 불가능한
+    // 깨진 글자만 남는다(실제로 2.0.2 메모가 그렇게 깨졌다). Windows 콘솔의 curl 이 한글을
+    // CP949로 보내는 게 전형적 원인. 조용히 저장하지 말고 업로드 자체를 거부한다.
+    if (notes.includes('�')) {
+      fs.unlinkSync(req.file.path);
+      return res.status(400).send('릴리스 메모의 한글이 깨져서 도착했습니다(� 포함). 대시보드 폼에서 업로드하면 안 깨집니다. (Windows 콘솔 curl 은 한글을 CP949로 보내 이렇게 됩니다)');
+    }
     const sha = await sha256File(req.file.path);
     const size = fs.statSync(req.file.path).size;
     // 파일명은 이력 행의 id로 고유하게 정한다 — 예전엔 versionCode로만 정해서, 같은
@@ -355,7 +396,7 @@ app.post('/release/upload', auth.requireAuth, uploadApk.single('apk'), async (re
       filename: 'pending', // 아래에서 실제 파일명으로 갱신
       sha256: sha,
       size,
-      notes: String(req.body.notes || '').slice(0, 500),
+      notes,
       uploaded_at: Date.now()
     });
     const filename = `app-${id}.apk`;
@@ -454,11 +495,14 @@ app.post('/media/upload', auth.requireAuth, uploadVideo.single('video'), async (
 });
 
 // 자료실의 영상을 특정 기기에 배포(다음 체크인 때 기기가 내려받는다).
+// 모달에서 체크박스로 여러 개를 고르므로 mediaId 는 1개(문자열)일 수도, 배열일 수도 있다.
 app.post('/media/push', auth.requireAuth, (req, res) => {
-  const mediaId = Number(req.body.mediaId);
   const deviceId = String(req.body.deviceId || '');
-  if (!deviceId || !store.getMedia(mediaId)) return res.status(400).send('잘못된 요청입니다.');
-  store.queueVideoPush(deviceId, mediaId);
+  const ids = [].concat(req.body.mediaId || [])
+    .map(Number)
+    .filter(id => store.getMedia(id));   // 자료실에서 지워진 id 가 섞여 와도 조용히 걸러낸다
+  if (!deviceId || ids.length === 0) return res.status(400).send('잘못된 요청입니다.');
+  for (const id of ids) store.queueVideoPush(deviceId, id);
   res.redirect('/dashboard');
 });
 
@@ -475,8 +519,20 @@ app.post('/media/delete', auth.requireAuth, (req, res) => {
   const media = store.getMedia(id);
   if (media) {
     try { fs.unlinkSync(path.join(VIDEO_DIR, media.filename)); } catch (e) { /* 이미 없을 수 있음 */ }
+    if (media.thumb) { try { fs.unlinkSync(path.join(VIDEO_DIR, media.thumb)); } catch (e) { /* */ } }
     store.deleteMedia(id);
   }
+  res.redirect('/dashboard');
+});
+
+// 썸네일 등록/교체. 어떤 이미지 포맷이든 받아 `<영상파일명>.jpg` 로 저장한다(§uploadThumb 주석).
+app.post('/media/thumb', auth.requireAuth, uploadThumb.single('thumb'), (req, res) => {
+  const media = store.getMedia(Number(req.body.mediaId));
+  if (!req.file) return res.status(400).send('이미지 파일이 필요합니다.');
+  if (!media) { fs.unlinkSync(req.file.path); return res.status(404).send('영상을 찾을 수 없습니다.'); }
+  const thumbName = `${media.filename}.jpg`;
+  fs.renameSync(req.file.path, path.join(VIDEO_DIR, thumbName)); // 교체면 그대로 덮어쓴다
+  store.setMediaThumb(media.id, thumbName);
   res.redirect('/dashboard');
 });
 

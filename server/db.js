@@ -75,7 +75,8 @@ CREATE TABLE IF NOT EXISTS media_library (
   original_name TEXT NOT NULL,        -- 기기에 실제로 내려가는 파일명(VideoRepository 가 이 이름으로 저장)
   size          INTEGER NOT NULL,
   sha256        TEXT NOT NULL,
-  uploaded_at   INTEGER NOT NULL
+  uploaded_at   INTEGER NOT NULL,
+  thumb         TEXT                  -- data/videos/ 하위 썸네일 파일명(없으면 NULL) — 기기 동영상 목록에 표시
 );
 
 -- 기기별 영상 배포(푸시) 대기열. 체크인 응답으로 다운로드 지시를 내려보내고, 기기 인벤토리에
@@ -110,7 +111,8 @@ for (const stmt of [
   `ALTER TABLE devices ADD COLUMN lat REAL`,
   `ALTER TABLE devices ADD COLUMN lng REAL`,
   `ALTER TABLE devices ADD COLUMN loc_accuracy REAL`,
-  `ALTER TABLE devices ADD COLUMN located_at INTEGER`
+  `ALTER TABLE devices ADD COLUMN located_at INTEGER`,
+  `ALTER TABLE media_library ADD COLUMN thumb TEXT`
 ]) {
   try { db.exec(stmt); } catch (e) { /* already exists */ }
 }
@@ -352,6 +354,9 @@ function insertMedia(m) { return stmtInsertMedia.run(m).lastInsertRowid; }
 const stmtSetMediaFilename = db.prepare(`UPDATE media_library SET filename = ? WHERE id = ?`);
 function setMediaFilename(id, filename) { stmtSetMediaFilename.run(filename, id); }
 
+const stmtSetMediaThumb = db.prepare(`UPDATE media_library SET thumb = ? WHERE id = ?`);
+function setMediaThumb(id, thumb) { stmtSetMediaThumb.run(thumb, id); }
+
 const stmtListMedia = db.prepare(`SELECT * FROM media_library ORDER BY id DESC`);
 function listMedia() { return stmtListMedia.all(); }
 
@@ -373,5 +378,5 @@ module.exports = {
   getRelease, listReleases, getReleaseById, insertRelease, setReleaseFilename, activateRelease,
   requestUpdatePrompt, requestUpdatePromptForOutdated,
   setContactOverride, requestPinReset,
-  insertMedia, setMediaFilename, listMedia, getMedia, deleteMedia
+  insertMedia, setMediaFilename, setMediaThumb, listMedia, getMedia, deleteMedia
 };

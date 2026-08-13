@@ -55,6 +55,13 @@ form.inline{display:inline;} input,select{font:inherit;padding:8px 10px;border:1
 .muted{color:var(--muted);} .small{font-size:13px;}
 .right{text-align:right;} .center{text-align:center;}
 .overflow{overflow-x:auto;}
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--fg);padding:18px 20px;min-width:340px;max-width:540px;}
+dialog::backdrop{background:rgba(0,0,0,.45);}
+.picklist{max-height:320px;overflow-y:auto;}
+.pick{display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid var(--line);cursor:pointer;}
+.pick.off{opacity:.55;cursor:default;}
+.thumb{width:44px;height:66px;object-fit:cover;border-radius:8px;display:block;background:var(--line);}
+.thumb-none{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px;}
 `;
 
 function page(title, body) {
@@ -96,10 +103,6 @@ function dashboardPage({ devices, release, releases, relPaging, media, mediaDir,
       <div class="verbar"><span style="width:${pct}%"></span></div>
     </div>`;
   }).join('') || '<p class="muted">아직 체크인한 기기가 없습니다.</p>';
-
-  const mediaOptions = media.map(m =>
-    `<option value="${m.id}">${esc(m.original_name)} (${fmtBytes(m.size)})</option>`
-  ).join('');
 
   const rows = devices.map(d => {
     const age = Date.now() - d.last_seen;
@@ -176,12 +179,37 @@ function dashboardPage({ devices, release, releases, relPaging, media, mediaDir,
           </form>
         </span>
       </div>`).join('');
+    // 영상 보내기 모달: 자료실 전체를 체크박스로 띄워 여러 개를 한 번에 보낸다.
+    // 이미 기기에 있는 파일(이름 기준)과 전송 대기 중인 파일은 체크 불가로 상태만 보여준다 —
+    // 골라봐야 기기 쪽 중복 방지/INSERT OR IGNORE 로 무시될 것들이라, 애초에 못 고르게 한다.
+    const onDeviceNames = new Set(vids.map(v => v && v.name));
+    const pendingPushIds = new Set(pendingPush.map(p => p.media_id));
+    const pickRows = media.map(m => {
+      const off = onDeviceNames.has(m.original_name) ? '<span class="badge b-ok">보유 중</span>'
+                : pendingPushIds.has(m.id) ? '<span class="badge b-warn">전송 대기</span>'
+                : null;
+      return `<label class="pick${off ? ' off' : ''}">
+          <input type="checkbox" name="mediaId" value="${m.id}" ${off ? 'disabled' : ''}>
+          <span class="small" style="flex:1;word-break:break-all;">${esc(m.original_name)} <span class="muted">${fmtBytes(m.size)}</span></span>
+          ${off || ''}
+        </label>`;
+    }).join('');
     const sendForm = media.length === 0 ? '' : `
-      <form method="post" action="/media/push" class="row" style="margin-top:8px;gap:6px;">
-        <input type="hidden" name="deviceId" value="${esc(d.device_id)}">
-        <select name="mediaId" style="max-width:220px;">${mediaOptions}</select>
-        <button class="btn ghost" type="submit" style="padding:3px 10px;">이 기기로 보내기</button>
-      </form>`;
+      <button class="btn ghost" type="button" style="margin-top:8px;padding:3px 10px;"
+              onclick="document.getElementById('push-${esc(d.device_id)}').showModal()">영상 보내기…</button>
+      <dialog id="push-${esc(d.device_id)}">
+        <form method="post" action="/media/push"
+              onsubmit="return this.querySelector('input[name=mediaId]:checked') ? true : (alert('보낼 영상을 선택하세요.'), false)">
+          <h3 style="margin:0 0 4px;">영상 보내기 — ${esc(d.app_label || d.device_id)}</h3>
+          <p class="muted small" style="margin:0 0 10px;">선택한 영상을 다음 접속 때 기기가 내려받습니다.</p>
+          <input type="hidden" name="deviceId" value="${esc(d.device_id)}">
+          <div class="picklist">${pickRows}</div>
+          <div class="row" style="justify-content:flex-end;margin-top:12px;">
+            <button class="btn ghost" type="button" onclick="this.closest('dialog').close()">취소</button>
+            <button class="btn" type="submit">선택한 영상 보내기</button>
+          </div>
+        </form>
+      </dialog>`;
     const totalBadgeParts = [];
     if (pendingDel.size) totalBadgeParts.push(`<span class="badge b-warn">삭제대기 ${pendingDel.size}</span>`);
     if (pendingPush.length) totalBadgeParts.push(`<span class="badge b-warn">수신대기 ${pendingPush.length}</span>`);
@@ -304,20 +332,32 @@ function dashboardPage({ devices, release, releases, relPaging, media, mediaDir,
         <button class="btn" type="submit">영상 업로드</button>
       </form>
       <p class="muted small" style="margin:8px 0 16px;">자료실 영상은 아래 기기 목록에서 원하는 기기를 골라 개별 배포한다.</p>
-      <div class="overflow"><table>
-        <thead><tr><th>파일</th><th>크기</th><th>업로드</th><th></th></tr></thead>
+      <!-- 영상이 수십 개가 되면 이 카드가 화면을 다 먹어서 기기 목록이 스크롤 저 밑으로 밀린다
+           → 표만 안에서 스크롤. -->
+      <div class="overflow" style="max-height:420px;overflow-y:auto;"><table>
+        <thead><tr><th>썸네일</th><th>파일</th><th>크기</th><th>업로드</th><th></th></tr></thead>
         <tbody>${media.map(m => `<tr>
+            <td>
+              ${m.thumb
+                ? `<img class="thumb" src="/media/${m.id}/thumb?${m.uploaded_at}" alt="" loading="lazy">`
+                : '<div class="thumb thumb-none">없음</div>'}
+            </td>
             <td class="small" style="word-break:break-all;">${esc(m.original_name)}</td>
             <td class="small">${fmtBytes(m.size)}</td>
             <td class="small">${esc(relTime(m.uploaded_at))}</td>
-            <td class="right">
+            <td class="right" style="white-space:nowrap;">
+              <form class="inline" method="post" action="/media/thumb" enctype="multipart/form-data">
+                <input type="hidden" name="mediaId" value="${m.id}">
+                <label class="btn ghost" style="padding:3px 10px;cursor:pointer;">${m.thumb ? '썸네일 교체' : '썸네일 등록'}<input type="file" name="thumb" accept="image/*" style="display:none" onchange="this.form.submit()"></label>
+              </form>
               <form class="inline" method="post" action="/media/delete" onsubmit="return confirm('자료실에서 이 영상을 삭제할까요? (이미 기기에 내려간 사본은 지워지지 않음)');">
                 <input type="hidden" name="id" value="${m.id}">
-                <button class="btn ghost" type="submit">삭제</button>
+                <button class="btn ghost" type="submit" style="padding:3px 10px;">삭제</button>
               </form>
             </td>
-          </tr>`).join('') || '<tr><td colspan="4" class="center muted">업로드된 영상이 없습니다.</td></tr>'}</tbody>
+          </tr>`).join('') || '<tr><td colspan="5" class="center muted">업로드된 영상이 없습니다.</td></tr>'}</tbody>
       </table></div>
+      <p class="muted small" style="margin:8px 0 0;">썸네일은 태블릿 동영상 목록에 표시된다. 등록/교체하면 각 기기가 다음 접속 때 내려받는다(썸네일이 없으면 기기가 영상 첫 장면을 대신 쓴다).</p>
     </div>
 
     <div class="card"><h2>버전 분포</h2>${verDist}</div>

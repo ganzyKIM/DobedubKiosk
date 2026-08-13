@@ -96,7 +96,7 @@ private fun VideoCard(video: VideoItem, onClick: () -> Unit) {
     var thumbnail by remember(video.file.path) { mutableStateOf<Bitmap?>(null) }
 
     LaunchedEffect(video.file.path) {
-        thumbnail = VideoThumbnailLoader.loadFirstFrame(video.file)
+        thumbnail = VideoThumbnailLoader.load(video.file)
     }
 
     Column(
