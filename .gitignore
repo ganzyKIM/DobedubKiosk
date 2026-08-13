@@ -21,3 +21,6 @@ keystore.properties
 # 서버 런타임(로컬 개발용)
 server/node_modules/
 server/data/
+
+# Claude Code 머신별 로컬 설정(권한 허용 목록 등)
+.claude/
