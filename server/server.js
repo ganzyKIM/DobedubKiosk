@@ -300,12 +300,18 @@ app.get('/media/:id/thumb', (req, res) => {
 
 // ---------- 백오피스 ----------
 
+// 폼 POST 뒤에는 보고 있던 탭으로 돌려보낸다. 로그인처럼 referer 가 대시보드가 아니면 기본 탭.
+function backToReferer(req, res) {
+  const ref = req.get('referer');
+  res.redirect(ref && ref.includes('/dashboard') ? ref : '/dashboard');
+}
+
 app.get('/login', (req, res) => res.type('html').send(views.loginPage(req.query.e ? '비밀번호가 올바르지 않습니다.' : null)));
 
 app.post('/login', (req, res) => {
   if (auth.checkPassword(req.body.password)) {
     auth.setSessionCookie(res);
-    return res.redirect('/dashboard');
+    return backToReferer(req, res);
   }
   return res.redirect('/login?e=1');
 });
@@ -359,6 +365,7 @@ app.get('/dashboard', auth.requireAuth, (req, res) => {
   });
 
   res.type('html').send(views.dashboardPage({
+    tab: String(req.query.tab || 'devices'),
     devices, release,
     releases: relPage,
     relPaging: { page: relPageNum, pages: relPages, total: allReleases.length },
@@ -402,7 +409,7 @@ app.post('/release/upload', auth.requireAuth, uploadApk.single('apk'), async (re
     const filename = `app-${id}.apk`;
     fs.renameSync(req.file.path, path.join(APK_DIR, filename));
     store.setReleaseFilename(id, filename);
-    res.redirect('/dashboard');
+    backToReferer(req, res);
   } catch (e) {
     console.error('upload error', e);
     res.status(500).send('업로드 처리 중 오류: ' + e.message);
@@ -418,24 +425,24 @@ app.post('/release/rollback', auth.requireAuth, (req, res) => {
     return res.status(410).send('이 버전의 APK 파일이 디스크에 없습니다(오래되어 정리됐을 수 있음).');
   }
   store.activateRelease(id);
-  res.redirect('/dashboard');
+  backToReferer(req, res);
 });
 
 // 업데이트가 안 된 기기 전체에 "업데이트 하시겠어요?" 확인창 지시를 건다.
 app.post('/release/notify-outdated', auth.requireAuth, (req, res) => {
   store.requestUpdatePromptForOutdated();
-  res.redirect('/dashboard');
+  backToReferer(req, res);
 });
 
 // 기기 하나에만 확인창 지시를 건다.
 app.post('/device/update-prompt', auth.requireAuth, (req, res) => {
   if (req.body.deviceId) store.requestUpdatePrompt(String(req.body.deviceId));
-  res.redirect('/dashboard');
+  backToReferer(req, res);
 });
 
 app.post('/device/label', auth.requireAuth, (req, res) => {
   if (req.body.deviceId) store.setLabel(req.body.deviceId, String(req.body.label || '').slice(0, 100));
-  res.redirect('/dashboard');
+  backToReferer(req, res);
 });
 
 // 기기별 문의 연락처 지정. 빈 값으로 저장하면 지정 해제(앱 기본값 유지).
@@ -443,26 +450,26 @@ app.post('/device/contact', auth.requireAuth, (req, res) => {
   if (req.body.deviceId) {
     store.setContactOverride(String(req.body.deviceId), String(req.body.contact || '').slice(0, 100));
   }
-  res.redirect('/dashboard');
+  backToReferer(req, res);
 });
 
 // 관리자 PIN 원격 초기화(0000). 현장에서 PIN을 잊었을 때의 유일한 복구 수단이라,
 // 지시가 실제로 먹혔는지는 기기가 보고하는 hasCustomPin 으로 확인한다.
 app.post('/device/pin-reset', auth.requireAuth, (req, res) => {
   if (req.body.deviceId) store.requestPinReset(String(req.body.deviceId));
-  res.redirect('/dashboard');
+  backToReferer(req, res);
 });
 
 app.post('/device/delete', auth.requireAuth, (req, res) => {
   if (req.body.deviceId) store.deleteDevice(req.body.deviceId);
-  res.redirect('/dashboard');
+  backToReferer(req, res);
 });
 
 // 원격 영상 삭제 지시 큐잉(다음 체크인 때 기기가 삭제).
 app.post('/device/video/delete', auth.requireAuth, (req, res) => {
   const { deviceId, filename } = req.body;
   if (deviceId && filename) store.queueVideoDelete(String(deviceId), String(filename));
-  res.redirect('/dashboard');
+  backToReferer(req, res);
 });
 
 // ---------- 영상 자료실 ----------
@@ -487,7 +494,7 @@ app.post('/media/upload', auth.requireAuth, uploadVideo.single('video'), async (
     const filename = `media-${id}${path.extname(originalName)}`;
     fs.renameSync(req.file.path, path.join(VIDEO_DIR, filename));
     store.setMediaFilename(id, filename);
-    res.redirect('/dashboard');
+    backToReferer(req, res);
   } catch (e) {
     console.error('media upload error', e);
     res.status(500).send('업로드 처리 중 오류: ' + e.message);
@@ -503,7 +510,7 @@ app.post('/media/push', auth.requireAuth, (req, res) => {
     .filter(id => store.getMedia(id));   // 자료실에서 지워진 id 가 섞여 와도 조용히 걸러낸다
   if (!deviceId || ids.length === 0) return res.status(400).send('잘못된 요청입니다.');
   for (const id of ids) store.queueVideoPush(deviceId, id);
-  res.redirect('/dashboard');
+  backToReferer(req, res);
 });
 
 // 아직 다운로드가 시작되지 않은 배포 지시를 취소.
@@ -511,7 +518,7 @@ app.post('/media/push/cancel', auth.requireAuth, (req, res) => {
   const mediaId = Number(req.body.mediaId);
   const deviceId = String(req.body.deviceId || '');
   if (deviceId && mediaId) store.clearVideoPush(deviceId, mediaId);
-  res.redirect('/dashboard');
+  backToReferer(req, res);
 });
 
 app.post('/media/delete', auth.requireAuth, (req, res) => {
@@ -522,7 +529,7 @@ app.post('/media/delete', auth.requireAuth, (req, res) => {
     if (media.thumb) { try { fs.unlinkSync(path.join(VIDEO_DIR, media.thumb)); } catch (e) { /* */ } }
     store.deleteMedia(id);
   }
-  res.redirect('/dashboard');
+  backToReferer(req, res);
 });
 
 // 썸네일 등록/교체. 어떤 이미지 포맷이든 받아 `<영상파일명>.jpg` 로 저장한다(§uploadThumb 주석).
@@ -533,7 +540,7 @@ app.post('/media/thumb', auth.requireAuth, uploadThumb.single('thumb'), (req, re
   const thumbName = `${media.filename}.jpg`;
   fs.renameSync(req.file.path, path.join(VIDEO_DIR, thumbName)); // 교체면 그대로 덮어쓴다
   store.setMediaThumb(media.id, thumbName);
-  res.redirect('/dashboard');
+  backToReferer(req, res);
 });
 
 const server = app.listen(PORT, () => {
