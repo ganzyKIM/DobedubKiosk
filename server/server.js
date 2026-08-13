@@ -545,7 +545,7 @@ app.post('/media/thumb', auth.requireAuth, uploadThumb.single('thumb'), (req, re
 
 const server = app.listen(PORT, () => {
   console.log(`[두비덥 함대관리] http://localhost:${PORT}  (대시보드: /dashboard)`);
-  if (!process.env.ADMIN_PASSWORD) console.log('  ⚠ ADMIN_PASSWORD 미설정 — 기본값 "dobedub" 사용 중. 운영 시 반드시 설정하세요.');
+  if (!process.env.ADMIN_PASSWORD) console.log('  ℹ ADMIN_PASSWORD 미설정 — data/admin-password.txt 의 값을 사용합니다.');
   if (!process.env.SESSION_SECRET) console.log('  ⚠ SESSION_SECRET 미설정 — 재시작 시 로그인 세션이 만료됩니다.');
   console.log(`  영상 저장소: ${VIDEO_DIR}  (이 폴더에 넣으면 자료실에 자동 등록)`);
   syncMediaFolder();
