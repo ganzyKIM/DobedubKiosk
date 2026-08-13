@@ -50,7 +50,8 @@ private const val SEEK_STEP_MS = 5_000L
 
 /**
  * 전체화면 동영상 재생. 컨트롤은 재생/일시정지, 처음부터, ±5초 탐색, 목록으로 버튼 + 시크바를 제공하고
- * 3초 무조작 시 자동으로 숨긴다(§4.2). 화면을 탭하면 재생/일시정지가 토글된다.
+ * 3초 무조작 시 자동으로 숨긴다(§4.2). 화면을 탭하면 컨트롤 표시만 토글되고, 재생/일시정지는
+ * 컨트롤의 버튼으로만 한다.
  */
 @Composable
 fun VideoPlayerScreen(
@@ -117,8 +118,10 @@ fun VideoPlayerScreen(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
             ) {
                 onUserInteraction()
-                controlsVisible = true
-                if (player.isPlaying) player.pause() else player.play()
+                // 화면 탭은 컨트롤을 보이고/숨기기만 한다. 재생·일시정지는 아래 버튼으로만 —
+                // 탭이 곧 일시정지였을 때 이용자가 화면을 스치기만 해도 영상이 서 버렸다.
+                // 단 일시정지 중에는 숨기지 않는다. 다시 재생할 버튼이 화면에서 사라지면 안 된다.
+                controlsVisible = !isPlaying || !controlsVisible
             }
     ) {
         AndroidView(
