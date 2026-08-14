@@ -14,6 +14,7 @@ import com.dobedub.kiosk.admin.LocationHelper
 import com.dobedub.kiosk.admin.WifiHelper
 import com.dobedub.kiosk.data.KioskSettings
 import com.dobedub.kiosk.data.KioskSettingsRepository
+import com.dobedub.kiosk.manual.ManualRepository
 import com.dobedub.kiosk.video.VideoRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -36,6 +37,7 @@ class AppUpdater(private val context: Context) {
 
     private val settings = KioskSettingsRepository(context)
     private val videoRepo = VideoRepository(context)
+    private val manualRepo = ManualRepository(context)
 
     data class Manifest(
         val update: Boolean,
@@ -210,6 +212,32 @@ class AppUpdater(private val context: Context) {
                 } catch (e: Exception) {
                     Log.w(TAG, "영상 다운로드 실패($name): ${e.message}")
                 }
+            }
+        }
+
+        // 홈 화면 이용안내 이미지를 백오피스가 지정한 세트와 똑같이 맞춘다.
+        // 배열이 아예 없으면(구버전 서버) 손대지 않고, 빈 배열이면 지우고 내장본으로 돌아간다 —
+        // 이 둘을 구분하지 않으면 서버를 되돌렸을 때 기기 이미지가 통째로 날아간다.
+        val manualArr = json.optJSONArray("manualImages")
+        if (manualArr != null) {
+            val wanted = LinkedHashMap<String, Long>()
+            for (i in 0 until manualArr.length()) {
+                val item = manualArr.optJSONObject(i) ?: continue
+                val name = item.optString("name", "")
+                if (name.isNotBlank()) wanted[name] = item.optLong("size", -1)
+            }
+            val urls = (0 until manualArr.length()).mapNotNull { i ->
+                manualArr.optJSONObject(i)?.let { it.optString("name", "") to it.optString("url", "") }
+            }.toMap()
+            try {
+                val changed = manualRepo.sync(wanted) { name, dest ->
+                    val url = urls[name].orEmpty()
+                    if (url.isBlank()) throw RuntimeException("URL 없음")
+                    downloadSmallFile(url, dest)
+                }
+                if (changed) Log.i(TAG, "이용안내 이미지 갱신됨 (${wanted.size}장)")
+            } catch (e: Exception) {
+                Log.w(TAG, "이용안내 이미지 동기화 실패: ${e.message}")
             }
         }
 
