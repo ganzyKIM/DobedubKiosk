@@ -21,13 +21,13 @@ const views = require('./views');
 const PORT = Number(process.env.PORT || 8090);
 const DEVICE_TOKEN = process.env.DEVICE_TOKEN || '';   // 설정 시 기기 체크인에 X-Kiosk-Token 요구
 
-// 기기 체크인 주기 — 앱의 MainActivity.UPDATE_CHECK_INTERVAL_MS 와 반드시 같은 값.
-// 온라인/오프라인 임계값은 반드시 이 값에서 파생시킬 것. 예전엔 앱은 6시간 주기인데
-// 대시보드는 "15분 내 = 온라인"으로 따로 박혀 있어, 멀쩡한 기기도 96% 시간 동안
-// 노란 "대기"로 표시되고 온라인 KPI가 항상 0이었다.
-const CHECKIN_INTERVAL_MS = 30 * 60 * 1000;
+// "접속 중" 판정은 **기기가 보고한 자기 체크인 주기**에서 기기별로 파생시킨다.
+// 예전엔 서버에 전역 상수를 박아뒀는데, 앱 주기를 바꾸면 아직 업데이트 안 된 구버전
+// 기기들이 일제히 "미접속"으로 보였다(앱은 30분인데 서버 임계값은 10분 기준 등).
+// 주기를 보고하지 않는 구버전 앱(v2.1 이하)은 그 시절 값인 30분으로 가정한다.
+const LEGACY_CHECKIN_INTERVAL_MS = 30 * 60 * 1000;
 // 두 주기를 연속으로 놓치면 이상 신호로 본다(+네트워크 지연 여유 10분).
-const ONLINE_MS = CHECKIN_INTERVAL_MS * 2 + 10 * 60 * 1000;
+const onlineMsFor = d => (d.checkin_interval_ms || LEGACY_CHECKIN_INTERVAL_MS) * 2 + 10 * 60 * 1000;
 const STALE_MS = 24 * 60 * 60 * 1000;
 const APK_DIR = path.join(store.DATA_DIR, 'apk');
 const VIDEO_DIR = path.join(store.DATA_DIR, 'videos');
@@ -240,6 +240,7 @@ app.post('/api/checkin', (req, res) => {
       // 구버전 앱은 이 값을 안 보낸다 — undefined 를 false 로 오해해 PIN 초기화를
       // 멋대로 확정 처리하지 않도록, boolean 일 때만 넘긴다.
       hasCustomPin: typeof b.hasCustomPin === 'boolean' ? b.hasCustomPin : undefined,
+      checkinIntervalMs: Number(b.checkinIntervalMs),
       // 설치 장소 식별용. AP는 항상 잡히지만 좌표는 NLP 켜진 기기에서만 온다.
       apSsid: typeof b.apSsid === 'string' ? b.apSsid.slice(0, 64) : null,
       apBssid: typeof b.apBssid === 'string' ? b.apBssid.slice(0, 32) : null,
@@ -400,7 +401,7 @@ app.get('/dashboard', auth.requireAuth, (req, res) => {
   let online = 0, offline = 0, onLatest = 0;
   for (const d of devices) {
     const age = now - d.last_seen;
-    if (age <= ONLINE_MS) online++;
+    if (age <= onlineMsFor(d)) online++;
     if (age > STALE_MS) offline++;
     if (release && d.version_code === release.version_code) onLatest++;
     const key = `${d.version_code}`;
@@ -443,7 +444,7 @@ app.get('/dashboard', auth.requireAuth, (req, res) => {
     mediaDir: VIDEO_DIR,
     builtinManual: builtinManualFiles(),
     stats: { total: devices.length, online, offline, onLatest, versionDist },
-    thresholds: { onlineMs: ONLINE_MS, staleMs: STALE_MS }
+    thresholds: { onlineMsFor, staleMs: STALE_MS }
   }));
 });
 

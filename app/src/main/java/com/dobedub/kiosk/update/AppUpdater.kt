@@ -137,6 +137,10 @@ class AppUpdater(private val context: Context) {
             // 이게 없으면 지시를 보낸 뒤 반영 여부를 알 길이 없어, 응답이 유실돼도 모른 채 지나간다.
             put("contactInfo", s.contactInfo)
             put("hasCustomPin", s.hasPinConfigured)
+            // 이 기기의 체크인 주기. 서버가 "접속 중" 판정을 기기별로 하게 해서, 주기가
+            // 다른 버전이 섞여 있어도 각자 올바르게 표시된다(전에는 전역 상수라 롤아웃
+            // 중에 멀쩡한 구버전 기기가 전부 미접속으로 보였다).
+            put("checkinIntervalMs", CHECKIN_INTERVAL_MS)
             // 이 태블릿이 어느 도서관에 있는지 가려내기 위한 정보.
             // 접속 AP 는 항상 잡히고, 좌표는 NLP(Google 위치 정확도)가 켜진 기기에서만 나온다.
             WifiHelper.connectedAp(context)?.let { ap ->
@@ -406,5 +410,17 @@ class AppUpdater(private val context: Context) {
         private const val TAG = "AppUpdater"
         /** 서버가 X-Kiosk-Token 을 요구하도록 설정했다면 여기에 같은 값을 넣는다(선택). */
         private const val DEVICE_TOKEN = ""
+
+        /**
+         * 체크인 주기. 체크인 payload 로 서버에 함께 보고하므로 **여기가 유일한 출처**다 —
+         * 예전엔 앱과 서버에 같은 숫자를 따로 박아두고 "반드시 같이 고칠 것"이라고 주석만
+         * 달아뒀는데, 실제로 어긋나서 멀쩡한 기기가 계속 "대기"로 표시된 적이 있다.
+         * 이제 서버는 기기가 보고한 값으로 기기별 판정을 하므로, 주기가 서로 다른 버전이
+         * 섞여 있어도 각자 올바르게 표시된다.
+         *
+         * 화면이 꺼져 있으면 doze 로 실제 간격은 이보다 길어진다(절전이지 고장이 아니다).
+         * 자는 기기까지 정확히 맞추려면 AlarmManager.setExactAndAllowWhileIdle 로 가야 한다.
+         */
+        const val CHECKIN_INTERVAL_MS = 10 * 60 * 1000L
     }
 }

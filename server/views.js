@@ -427,7 +427,7 @@ function devicesTab({ devices, release, media, stats, thresholds, builtinManual 
     const age = Date.now() - d.last_seen;
     // 태블릿은 화면이 꺼지면 절전으로 체크인이 늦어진다 — 그건 고장이 아니다. 그래서
     // "오프라인" 대신 마지막 접속 시각을 헤드라인으로 두고, 24시간 넘은 것만 빨강으로 센다.
-    const st = age <= thresholds.onlineMs ? { k: 'ok', t: '접속 중', c: 'var(--ok)' }
+    const st = age <= thresholds.onlineMsFor(d) ? { k: 'ok', t: '접속 중', c: 'var(--ok)' }
              : age <= thresholds.staleMs ? { k: 'warn', t: '미접속', c: 'var(--warn)' }
              : { k: 'bad', t: '연락 두절', c: 'var(--bad)' };
 
@@ -498,7 +498,7 @@ function devicesTab({ devices, release, media, stats, thresholds, builtinManual 
     <div class="kpis">
       <div class="kpi"><div class="kpi-l">전체 기기</div><div class="kpi-n">${stats.total}</div></div>
       <div class="kpi"><div class="kpi-l">접속 중</div><div class="kpi-n" style="color:var(--ok)">${stats.online}</div>
-        <div class="kpi-sub">최근 ${Math.round(thresholds.onlineMs / 60000)}분 내</div></div>
+        <div class="kpi-sub">체크인 주기 2회 내</div></div>
       <div class="kpi"><div class="kpi-l">연락 두절</div><div class="kpi-n" style="color:${attention ? 'var(--bad)' : 'inherit'}">${stats.offline}</div>
         <div class="kpi-sub">${Math.round(thresholds.staleMs / 3600000)}시간+ 무소식</div></div>
       <div class="kpi"><div class="kpi-l">최신 버전</div><div class="kpi-n">${stats.onLatest}<span class="muted" style="font-size:17px">/${stats.total}</span></div></div>
@@ -511,7 +511,8 @@ function devicesTab({ devices, release, media, stats, thresholds, builtinManual 
         <tbody>${rows}</tbody>
       </table></div>` : '<div class="empty">아직 체크인한 기기가 없습니다.</div>'}
       <div class="card-note">
-        태블릿은 사용 중일 때 30분마다 접속합니다. 화면이 꺼져 있으면 1~2시간까지 늦어지고 밤에는 아침까지 끊기는 것이 정상입니다 —
+        태블릿은 사용 중일 때 ${Math.round((devices[0] && devices[0].checkin_interval_ms ? devices[0].checkin_interval_ms : 30 * 60 * 1000) / 60000)}분마다 접속합니다.
+        화면이 꺼져 있으면 그보다 훨씬 늦어지고 밤에는 아침까지 끊기는 것이 정상입니다 —
         <b>“미접속”은 고장이 아니라 쉬고 있다는 뜻</b>입니다. 24시간 넘게 소식이 없을 때만 확인이 필요합니다.
       </div>
     </div>
