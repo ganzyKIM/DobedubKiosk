@@ -194,3 +194,72 @@ claude
 
 과거 결정의 근거가 더 필요하면 `git log`를 보면 된다 — 커밋 메시지에 증상·원인·검증 결과를
 남겨두었다.
+
+## 11. 맥에서 개발하기
+
+윈도우 마스터 PC는 그대로 두고 맥에서 개발을 이어갈 때. **납품은 계속 윈도우에서 하므로
+`.bat`/`.ps1` 은 지우지 않고 그대로 둔다** — 같은 일을 하는 맥용 스크립트를 나란히 둔 것이다.
+
+### 도구 설치 (Apple Silicon 기준, 실측)
+
+```bash
+brew install openjdk@17 node@22 cloudflared
+brew install --cask android-commandlinetools android-platform-tools
+sdkmanager --sdk_root="$HOME/Library/Android/sdk" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+```
+
+`openjdk@17` 과 `node@22` 는 **keg-only** 라 PATH 에 자동으로 안 걸린다. `~/.zprofile` 에 넣는다:
+
+```bash
+export JAVA_HOME="/opt/homebrew/opt/openjdk@17"
+export PATH="$JAVA_HOME/bin:/opt/homebrew/opt/node@22/bin:$PATH"
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
+export PATH="$ANDROID_HOME/platform-tools:$PATH"
+```
+
+> `~/.zprofile` 은 **로그인 셸에서만** 읽힌다. VS Code 내장 터미널 등 비로그인 셸에서
+> `command not found` 가 나므로 `~/.zshrc` 에서 `source ~/.zprofile` 을 한 번 더 해준다.
+
+`local.properties` 는 §3 대로 이 머신 경로로 새로 쓴다(`sdk.dir=/Users/<계정>/Library/Android/sdk`).
+
+### 스크립트 대응표
+
+| 하는 일 | 윈도우 | 맥 |
+|---|---|---|
+| 태블릿 원클릭 세팅 | `태블릿-세팅.bat` → `setup-tablet.ps1` | `태블릿-세팅.command` → `setup-tablet.sh` |
+| 함대 서버 실행 | `관리자-실행.bat` → `start-admin.ps1` | `관리자-실행.command` → `start-admin.sh` |
+| 함대 서버 종료 | `관리자-종료.bat` | `관리자-종료.command` (`./start-admin.sh --stop`) |
+| 공인 HTTPS 터널 | `server/start-tunnel.ps1` | `server/start-tunnel.sh` |
+
+옵션 이름만 관례에 맞게 바뀌었다(`-SkipVideo` → `--skip-video`). 동작·판정·출력은 같게 맞췄고,
+블로트웨어 목록은 양쪽 33개가 동일하다. **한쪽을 고치면 반대쪽도 같이 고칠 것.**
+
+`.command` 는 맥에서 **Finder 더블클릭으로 실행되는 셸 스크립트**다(.bat 더블클릭 UX 대응).
+git 에서 실행권한이 빠지면 더블클릭이 안 되므로 `chmod +x *.command *.sh` 로 되살린다.
+
+### 태블릿을 맥에 붙이기
+
+1. USB 연결 → 태블릿 화면의 "USB 디버깅 허용" 승인 (키오스크 잠금 상태면 관리자 메뉴에서
+   **키오스크 모드 해제** 후에야 팝업이 뜬다 — §7 참고).
+2. `adb devices` 로 `device` 상태 확인.
+3. 함대 서버는 `./start-admin.sh` 로 띄운다. 실행하면 **태블릿에 입력할 LAN 주소**
+   (`http://<맥 IP>:8090`)를 같이 찍어준다.
+4. 같은 와이파이면 태블릿 관리자 화면의 **"서버 자동 찾기"** 가 서브넷을 스캔해 알아서 찾는다.
+   서버는 `0.0.0.0` 에 바인딩되므로 LAN 에서 그대로 닿는다.
+
+> 맥 방화벽이 켜져 있으면 태블릿에서 들어오는 접속이 막힐 수 있다.
+> `/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate` 로 확인한다.
+
+### 맥에서 밟는 함정
+
+- **`gradlew` 실행권한**: 윈도우에서 만들어져 `100644` 로 커밋돼 있었다(현재는 `100755` 로 수정됨).
+  다시 빠지면 `chmod +x gradlew`.
+- **bash 3.2**: 맥 기본 `/bin/bash` 는 3.2 라 연관배열·`mapfile` 이 없다. 맥용 스크립트는
+  이 제약에 맞춰 작성돼 있으니 4.x 문법을 넣지 말 것.
+- **`timeout` 명령이 없다**: coreutils 전용. `perl -e 'alarm N; exec @ARGV' <명령>` 으로 대체.
+- **`stat`/`date` 옵션이 GNU 와 다르다**: BSD 는 `stat -f %z`, `date -r`. 스크립트에 양쪽을
+  시도하는 헬퍼(`file_size`/`file_mtime`/`fmt_time`)를 넣어두었다.
+- **디버그 서명 불일치**(§5): 맥에서 빌드한 디버그 APK 는 윈도우 PC 의 debug keystore 와
+  달라 덮어설치가 안 된다. 릴리스 키스토어(`release-keystore.jks`)를 USB 로 옮겨와
+  `assembleRelease` 로 빌드하면 이 문제가 없다.

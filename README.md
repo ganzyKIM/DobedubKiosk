@@ -28,17 +28,23 @@ JAVA_HOME="/path/to/Android Studio/jbr" ./gradlew assembleDebug
 
 ## 태블릿 프로비저닝 (소량 납품 기준)
 
-**원클릭 세팅**: 태블릿을 USB로 연결하고 **`태블릿-세팅.bat` 을 더블클릭**하면
-adb 탐색 → 연결 대기 → 계정 점검 → WebView 업데이트 → APK 설치 → Device Owner 지정 →
-샘플 동영상 투입 → 실행/검증까지 자동으로 진행된다.
+**원클릭 세팅**: 태블릿을 USB로 연결하고 **윈도우는 `태블릿-세팅.bat`, 맥은 `태블릿-세팅.command`
+를 더블클릭**하면 adb 탐색 → 연결 대기 → 계정 점검 → WebView 업데이트 → APK 설치 →
+Device Owner 지정 → 샘플 동영상 투입 → 실행/검증까지 자동으로 진행된다.
 
 납품 담당자용 상세 절차·문제 해결은 **[납품_매뉴얼.md](납품_매뉴얼.md)** 참고.
+맥에서 개발할 때의 도구 설치·스크립트 대응표는 **[DEV_SETUP.md](DEV_SETUP.md) §11**.
 
 수동 실행(옵션 제어)이 필요하면:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\setup-tablet.ps1            # 전체
 powershell -ExecutionPolicy Bypass -File .\setup-tablet.ps1 -SkipVideo # 영상 생략
+```
+
+```bash
+./setup-tablet.sh                # 맥/리눅스 — 전체
+./setup-tablet.sh --skip-video   # 영상 생략
 ```
 
 > 핵심 제약: Device Owner 지정은 **기기에 계정이 하나도 없는 상태에서만** 성공한다.
@@ -53,7 +59,8 @@ powershell -ExecutionPolicy Bypass -File .\setup-tablet.ps1 -SkipVideo # 영상 
 - 서버/백오피스: `server/` (Node.js + SQLite), 대시보드 `/dashboard` — 배포 버전 이력/롤백,
   영상 자료실(업로드 후 기기별 배포), 강제 업데이트 알림.
 - 같은 와이파이면 관리자 화면의 **"서버 자동 찾기"** 가 서브넷을 스캔해 주소를 자동 입력한다.
-  다른 네트워크(도서관)에 있는 태블릿은 **공인 HTTPS 주소**가 필요하다 — `server/start-tunnel.ps1`.
+  다른 네트워크(도서관)에 있는 태블릿은 **공인 HTTPS 주소**가 필요하다 —
+  `server/start-tunnel.ps1` (윈도우) / `server/start-tunnel.sh` (맥).
 - 전체 개요·서명 키 주의사항: **[원격관리_업데이트.md](원격관리_업데이트.md)**, 서버 운영: **[server/README.md](server/README.md)**
 
 > ⚠ **서명 키**: 업데이트는 같은 키로 서명된 APK만 가능하다. `release-keystore.jks` + `keystore.properties`
