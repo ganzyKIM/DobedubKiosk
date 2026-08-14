@@ -210,6 +210,36 @@ async function main() {
     assert.ok(cd.includes("filename*=UTF-8''"), 'RFC 5987 인코딩 누락: ' + cd);
   });
 
+  await test('썸네일 등록/교체 → 그 영상을 보유한 기기를 즉시 깨움', async () => {
+    // 보유 기기만 깨어나야 하므로, 이 기기가 테스트영상을 보유했다는 보고를 먼저 만든다
+    // (앞 테스트들의 체크인이 videos:[] 로 보유 목록을 덮어써 뒀다).
+    await checkin(DEV, 21, { videos: [{ name: '테스트영상.mp4', size: 1024 }] });
+    try {   // 앞 테스트들이 남긴 pending wake 를 먼저 비운다
+      const drain = new AbortController();
+      const t = setTimeout(() => drain.abort(), 700);
+      await fetch(`${BASE}/api/poke?deviceId=${DEV}`, { signal: drain.signal });
+      clearTimeout(t);
+    } catch (e) { /* pending 없음 */ }
+
+    const fd = new FormData();
+    fd.set('mediaId', String(mediaId));
+    fd.set('thumb', new Blob([Buffer.alloc(500, 3)]), 'cover.jpg');
+    const up = await fetch(`${BASE}/media/thumb`, {
+      method: 'POST', headers: { Cookie: cookie }, body: fd, redirect: 'manual'
+    });
+    assert.ok(up.status === 302 || up.status === 200, `썸네일 업로드 HTTP ${up.status}`);
+
+    const ctrl = new AbortController();
+    const t2 = setTimeout(() => ctrl.abort(), 3000);
+    let resp;
+    try {
+      resp = await (await fetch(`${BASE}/api/poke?deviceId=${DEV}`, { signal: ctrl.signal })).json();
+    } catch (e) {
+      throw new Error('3초 안에 안 깨어남 — 썸네일 라우트가 wakeDevice 를 안 부른다');
+    } finally { clearTimeout(t2); }
+    assert.equal(resp.checkinNow, true);
+  });
+
   await test('대시보드 HTML 에 중첩 <form> 없음(취소 버그 회귀 방지)', async () => {
     // 앞 테스트의 정리 순서와 무관하게, "받는 중"(취소 폼 포함) 상태를 직접 만든 뒤 렌더한다.
     await admin('/media/push', { deviceId: DEV, mediaId, mode: 'ask' });

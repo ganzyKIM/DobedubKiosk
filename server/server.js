@@ -706,6 +706,7 @@ app.post('/device/manual/upload', auth.requireAuth, uploadManual.array('images',
       fs.renameSync(f.path, path.join(MANUAL_DIR, stored));
       store.db.prepare('UPDATE manual_images SET filename = ? WHERE id = ?').run(stored, id);
     }
+    wakeDevice(deviceId);
     backToReferer(req, res);
   } catch (e) {
     console.error('manual upload error', e);
@@ -719,12 +720,15 @@ app.post('/device/manual/delete', auth.requireAuth, (req, res) => {
   if (row) {
     try { fs.unlinkSync(path.join(MANUAL_DIR, row.filename)); } catch (e) { /* */ }
     store.deleteManual(row.id);
+    wakeDevice(row.device_id);   // 폼에는 id 만 오므로 기기는 행에서 역추적
   }
   backToReferer(req, res);
 });
 
 app.post('/device/manual/move', auth.requireAuth, (req, res) => {
+  const row = store.getManual(Number(req.body.id));
   store.moveManual(Number(req.body.id), req.body.dir === 'up' ? -1 : 1);
+  if (row) wakeDevice(row.device_id);
   backToReferer(req, res);
 });
 
@@ -735,6 +739,7 @@ app.post('/device/manual/clear', auth.requireAuth, (req, res) => {
     try { fs.unlinkSync(path.join(MANUAL_DIR, m.filename)); } catch (e) { /* */ }
     store.deleteManual(m.id);
   }
+  if (deviceId) wakeDevice(deviceId);
   backToReferer(req, res);
 });
 
@@ -761,6 +766,7 @@ app.post('/device/manual/copy', auth.requireAuth, (req, res) => {
     fs.copyFileSync(path.join(MANUAL_DIR, m.filename), path.join(MANUAL_DIR, stored));
     store.db.prepare('UPDATE manual_images SET filename = ? WHERE id = ?').run(stored, id);
   }
+  wakeDevice(to);
   backToReferer(req, res);
 });
 
@@ -844,6 +850,14 @@ app.post('/media/thumb', auth.requireAuth, uploadThumb.single('thumb'), (req, re
   const thumbName = `${media.filename}.jpg`;
   fs.renameSync(req.file.path, path.join(VIDEO_DIR, thumbName)); // 교체면 그대로 덮어쓴다
   store.setMediaThumb(media.id, thumbName);
+  // 썸네일은 그 영상을 보유한 기기에만 내려간다 — 그 기기들을 깨워 몇 초 안에 반영시킨다.
+  // (다음 체크인까지 최대 10분 안 보이던 것이 사용자 입장에선 "적용 안 됨"이었다)
+  for (const d of store.allDevices()) {
+    try {
+      const owned = JSON.parse(d.videos || '[]');
+      if (owned.some(v => v && v.name === media.original_name)) wakeDevice(d.device_id);
+    } catch (e) { /* videos JSON 이 깨진 행은 건너뜀 */ }
+  }
   backToReferer(req, res);
 });
 
