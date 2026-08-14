@@ -106,7 +106,10 @@ else
   # ---------- 3. 백그라운드 실행 ----------
   mkdir -p "$DATA_DIR"
   info "서버를 시작합니다..."
-  ( cd "$SERVER_DIR" && nohup "$NODE" server.js >>"$LOG_FILE" 2>&1 & )
+  # 서브셸 자체의 stdout/stderr 까지 끊어 완전히 분리한다. 자식의 fd 만 로그로 돌리면,
+  # 이 스크립트의 출력을 파이프로 받는 호출( ./start-admin.sh | tee ... )에서 파이프 쓰기단이
+  # 남아 읽는 쪽이 EOF 를 못 받고 영영 매달린다. 터미널에서 직접 실행할 땐 안 드러난다.
+  ( cd "$SERVER_DIR" && nohup "$NODE" server.js >>"$LOG_FILE" 2>&1 </dev/null & ) >/dev/null 2>&1 </dev/null
 
   # ---------- 4. 준비될 때까지 대기 ----------
   # 즉시 브라우저를 열면 연결 거부 화면이 뜬다 — /health 가 ok 를 줄 때까지 기다린다.
