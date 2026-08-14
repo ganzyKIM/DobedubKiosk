@@ -221,11 +221,21 @@ function manifestFor(req, deviceRow) {
 // 체크인한다. **지시 자체는 여전히 체크인 응답으로만 내려간다** — 이 채널은 "깨우기"만
 // 하므로 응답 유실·구버전 앱(404 폴백)·오프라인 기기 모두 기존 경로로 자연 수렴한다.
 const POKE_HOLD_MS = 50 * 1000;
+// 대기자 없이 wake 가 온 경우의 "밀린 깨움" 보관 시간. 이보다 오래되면 정규 체크인이
+// 이미 지나갔을 것이므로 버린다(스테일 즉시-체크인 방지).
+const PENDING_WAKE_TTL_MS = 10 * 60 * 1000;
 const pokeWaiters = new Map();   // deviceId → { res, timer }
+const pendingWakes = new Map();  // deviceId → wake 시각. 대기자 없을 때 온 깨움을 기억한다.
 
 function wakeDevice(deviceId) {
   const w = pokeWaiters.get(deviceId);
-  if (!w) return;                // 대기 중 아님(오프라인이거나 체크인 처리 중) — 다음 체크인에 반영
+  if (!w) {
+    // 기기가 마침 체크인 처리 중이거나(=poke 미접속 틈) 오프라인 — 깨움을 버리면 지시가
+    // 다음 정규 주기(10분)까지 밀린다(실기기에서 재현된 레이스). 기억해뒀다가 다음 poke
+    // 접속에 즉시 응답한다. 오프라인 기기는 TTL 뒤 소멸하고 정규 체크인 경로가 처리한다.
+    pendingWakes.set(deviceId, Date.now());
+    return;
+  }
   pokeWaiters.delete(deviceId);
   clearTimeout(w.timer);
   try { w.res.json({ checkinNow: true }); } catch (e) { /* 이미 끊긴 연결 */ }
@@ -237,6 +247,16 @@ app.get('/api/poke', (req, res) => {
   }
   const deviceId = String(req.query.deviceId || '').slice(0, 128);
   if (!deviceId) return res.status(400).json({ error: 'deviceId required' });
+
+  // 접속 공백 중에 밀린 깨움이 있으면 붙잡지 않고 즉시 응답한다(레벨 트리거).
+  const pendingAt = pendingWakes.get(deviceId);
+  if (pendingAt !== undefined) {
+    pendingWakes.delete(deviceId);
+    if (Date.now() - pendingAt < PENDING_WAKE_TTL_MS) {
+      return res.json({ checkinNow: true });
+    }
+    // TTL 지난 스테일 깨움은 버리고 평소처럼 대기
+  }
 
   // 같은 기기의 이전 대기가 남아 있으면(앱 재시작 등) 그쪽을 먼저 정리한다.
   const prev = pokeWaiters.get(deviceId);
@@ -288,6 +308,9 @@ setInterval(() => {
   for (const [k, t] of transfers) {
     const age = now - t.at;
     if ((t.status !== 'downloading' && age > 60 * 1000) || age > 10 * 60 * 1000) transfers.delete(k);
+  }
+  for (const [id, at] of pendingWakes) {
+    if (now - at >= PENDING_WAKE_TTL_MS) pendingWakes.delete(id);
   }
 }, 30 * 1000).unref();
 

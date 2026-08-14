@@ -162,6 +162,15 @@ async function main() {
   });
 
   await test('poke: 대기 중 push 가 오면 즉시 checkinNow:true', async () => {
+    // 앞선 테스트들의 push 가 남긴 pending wake 를 먼저 비운다 — 안 비우면 아래 fetch 가
+    // "대기 없이 즉시 true" 경로로 통과해버려 edge(대기 중 깨우기) 검증이 무의미해진다.
+    try {
+      const drain = new AbortController();
+      const t = setTimeout(() => drain.abort(), 700);
+      await fetch(`${BASE}/api/poke?deviceId=${DEV}`, { signal: drain.signal });
+      clearTimeout(t);
+    } catch (e) { /* pending 없음 — 타임아웃으로 끊김 */ }
+
     const wait = fetch(`${BASE}/api/poke?deviceId=${DEV}`).then(r => r.json());
     await new Promise(r => setTimeout(r, 300));   // long-poll 이 자리잡을 시간
     await admin('/media/push', { deviceId: DEV, mediaId, mode: 'force' });
@@ -170,6 +179,24 @@ async function main() {
       new Promise((_, rej) => setTimeout(() => rej(new Error('3초 안에 안 깨어남')), 3000))
     ]);
     assert.equal(resp.checkinNow, true);
+  });
+
+  await test('poke: wake 시점에 대기자가 없어도 다음 접속이 즉시 깨어난다(pending wake)', async () => {
+    // 기기가 체크인 처리 중(=long-poll 미접속)에 관리자가 push 를 누르면 그 깨움이
+    // 유실되어 지시가 다음 정규 주기(10분)까지 밀린다 — 실기기에서 두 번 재현된 레이스.
+    // wakeDevice 는 대기자가 없으면 기억해뒀다가, 다음 poke 접속에 즉시 응답해야 한다.
+    await admin('/media/push/cancel', { deviceId: DEV, mediaId });   // 큐 정리(부수효과 제거)
+    await admin('/media/push', { deviceId: DEV, mediaId, mode: 'force' });  // 대기자 없는 wake
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 3000);
+    let resp;
+    try {
+      resp = await (await fetch(`${BASE}/api/poke?deviceId=${DEV}`, { signal: ctrl.signal })).json();
+    } catch (e) {
+      throw new Error('3초 안에 응답 없음 — pending wake 미구현이면 50초 대기로 빠진다');
+    } finally { clearTimeout(t); }
+    assert.equal(resp.checkinNow, true);
+    await admin('/media/push/cancel', { deviceId: DEV, mediaId });   // 뒷정리
   });
 
   await test('한글 이름 영상 다운로드가 200 (Content-Disposition 헤더 회귀 방지)', async () => {
@@ -184,7 +211,8 @@ async function main() {
   });
 
   await test('대시보드 HTML 에 중첩 <form> 없음(취소 버그 회귀 방지)', async () => {
-    // 대기 항목이 있는 상태의 대시보드를 실제로 렌더시켜 검사한다.
+    // 앞 테스트의 정리 순서와 무관하게, "받는 중"(취소 폼 포함) 상태를 직접 만든 뒤 렌더한다.
+    await admin('/media/push', { deviceId: DEV, mediaId, mode: 'ask' });
     const html = await (await fetch(`${BASE}/dashboard`, { headers: { Cookie: cookie } })).text();
     let open = false;
     for (const m of html.matchAll(/<(\/?)form\b[^>]*>/g)) {

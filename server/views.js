@@ -247,6 +247,11 @@ function openModal(id){
   if (document.querySelector('.xfer, .xfer-sum')) {
     poll();
     setInterval(function(){ if (failStreak < 30) poll(); }, 2000);
+    // 백그라운드 탭에서는 폴링을 쉬므로, 다시 보이는 순간 한 번 바로 갱신해
+    // 최대 2초의 스테일 표시도 없앤다.
+    document.addEventListener('visibilitychange', function(){
+      if (document.visibilityState === 'visible') poll();
+    });
   }
 })();`;
 
