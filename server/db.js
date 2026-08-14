@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS devices (
   contact       TEXT,                  -- 기기가 실제로 쓰고 있다고 보고한 문의 연락처
   contact_override TEXT,               -- 관리자가 이 기기에 지정한 연락처(NULL이면 미지정=기기 기본값 사용)
   pin_reset     INTEGER NOT NULL DEFAULT 0, -- 1이면 다음 체크인 때 관리자 PIN을 0000으로 되돌리라고 지시
+  checkin_interval_ms INTEGER,        -- 기기가 보고한 자기 체크인 주기. "접속 중" 판정을 기기별로 하기 위한 값
   ap_ssid       TEXT,                  -- 접속 중인 Wi-Fi AP 이름 (설치 장소 식별의 1차 근거)
   ap_bssid      TEXT,                  -- 그 AP의 MAC — 같은 SSID가 여러 곳에 있어도 구분된다
   lat           REAL,                  -- 좌표(NLP 켜진 기기에서만 나온다. 대개 null)
@@ -127,7 +128,8 @@ for (const stmt of [
   `ALTER TABLE devices ADD COLUMN lng REAL`,
   `ALTER TABLE devices ADD COLUMN loc_accuracy REAL`,
   `ALTER TABLE devices ADD COLUMN located_at INTEGER`,
-  `ALTER TABLE media_library ADD COLUMN thumb TEXT`
+  `ALTER TABLE media_library ADD COLUMN thumb TEXT`,
+  `ALTER TABLE devices ADD COLUMN checkin_interval_ms INTEGER`
 ]) {
   try { db.exec(stmt); } catch (e) { /* already exists */ }
 }
@@ -156,10 +158,11 @@ const stmtUpsert = db.prepare(`
 INSERT INTO devices (device_id, model, serial, version_code, version_name, battery,
                      kiosk_locked, start_url, app_label, ip, videos, contact,
                      ap_ssid, ap_bssid, lat, lng, loc_accuracy, located_at,
-                     first_seen, last_seen, checkin_count)
+                     checkin_interval_ms, first_seen, last_seen, checkin_count)
 VALUES (@device_id, @model, @serial, @version_code, @version_name, @battery,
         @kiosk_locked, @start_url, @app_label, @ip, @videos, @contact,
-        @ap_ssid, @ap_bssid, @lat, @lng, @loc_accuracy, @located_at, @now, @now, 1)
+        @ap_ssid, @ap_bssid, @lat, @lng, @loc_accuracy, @located_at,
+        @checkin_interval_ms, @now, @now, 1)
 ON CONFLICT(device_id) DO UPDATE SET
   model        = excluded.model,
   serial       = excluded.serial,
@@ -180,6 +183,7 @@ ON CONFLICT(device_id) DO UPDATE SET
   lng          = COALESCE(excluded.lng, devices.lng),
   loc_accuracy = COALESCE(excluded.loc_accuracy, devices.loc_accuracy),
   located_at   = COALESCE(excluded.located_at, devices.located_at),
+  checkin_interval_ms = COALESCE(excluded.checkin_interval_ms, devices.checkin_interval_ms),
   last_seen    = excluded.last_seen,
   checkin_count = devices.checkin_count + 1
 `);
@@ -242,6 +246,8 @@ function recordCheckin(d) {
     lng: Number.isFinite(d.lng) ? d.lng : null,
     loc_accuracy: Number.isFinite(d.locAccuracy) ? d.locAccuracy : null,
     located_at: Number.isFinite(d.locatedAt) ? d.locatedAt : null,
+    checkin_interval_ms: Number.isFinite(d.checkinIntervalMs) && d.checkinIntervalMs > 0
+      ? d.checkinIntervalMs : null,
     now
   });
 

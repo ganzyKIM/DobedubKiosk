@@ -41,12 +41,8 @@ import kotlinx.coroutines.launch
 private const val DEFAULT_IDLE_TIMEOUT_MINUTES = 5
 private const val DEFAULT_VOLUME_MAX_PERCENT = 100
 
-/** 자동 업데이트 체크 주기(6시간). 시작 직후 1회 + 이후 주기적으로 체크인/업데이트. */
-// 체크인 주기. 함대 대시보드의 온라인/오프라인 판정이 이 값에서 파생되므로
-// (server/server.js 의 CHECKIN_INTERVAL_MS), 바꾸면 서버 쪽도 같이 맞출 것.
-// 6시간이었으나 그 경우 정상 기기도 대시보드에서 대부분 "대기"로 보여 현황 파악이 안 됐다.
-// 상시 전원 연결된 키오스크라 30분 주기의 작은 JSON POST는 부담이 없다.
-private const val UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000L
+// 체크인 주기는 AppUpdater.CHECKIN_INTERVAL_MS 가 단일 출처다 — 그 값을 서버에도 함께
+// 보고하므로, 주기를 바꿀 때 서버 상수를 따로 맞출 필요가 없다.
 private const val UPDATE_INITIAL_DELAY_MS = 20_000L
 
 /** 프로비저닝 인텐트 엑스트라 키(태블릿 세팅 스크립트에서 도서관 주소/기관명 전달). */
@@ -234,7 +230,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * 시작 직후 1회 + 30분마다 서버에 체크인하고, 새 버전이 있으면 홈 화면 유휴 상태일 때만 설치한다
+     * 시작 직후 1회 + AppUpdater.CHECKIN_INTERVAL_MS 마다 서버에 체크인하고, 새 버전이 있으면 홈 화면 유휴 상태일 때만 설치한다
      * (웹툰/영상 재생 중 갑작스러운 재시작 방지). 설치가 시작되면 프로세스가 재시작되며 키오스크 홈으로 복귀한다.
      */
     private fun startPeriodicUpdateChecks() {
@@ -249,7 +245,7 @@ class MainActivity : ComponentActivity() {
                 } catch (_: Exception) {
                     // 네트워크 오류 등은 다음 주기에 재시도
                 }
-                delay(UPDATE_CHECK_INTERVAL_MS)
+                delay(AppUpdater.CHECKIN_INTERVAL_MS)
             }
         }
     }
