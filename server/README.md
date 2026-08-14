@@ -26,7 +26,7 @@
 | `db.js` | SQLite 저장소 (기기 인벤토리, 배포 버전 이력, 영상 자료실/배포 큐) |
 | `auth.js` | 공유 비밀번호 로그인 + HMAC 서명 쿠키 |
 | `views.js` | 대시보드/로그인 HTML |
-| `start-tunnel.ps1` | 공인 HTTPS 원격 접속 경로 실행(Cloudflare Quick Tunnel) |
+| `start-tunnel.ps1` / `start-tunnel.sh` | 공인 HTTPS 원격 접속 경로 실행(Cloudflare Quick Tunnel). 앞은 윈도우, 뒤는 맥/리눅스 |
 | `data/` | 런타임 데이터 (SQLite DB + 업로드된 APK·영상) — git 제외 |
 
 ## 실행
@@ -42,6 +42,9 @@ Windows PowerShell:
 ```powershell
 $env:ADMIN_PASSWORD="바꾸세요"; $env:SESSION_SECRET="랜덤문자열"; $env:PORT="8090"; npm start
 ```
+
+원클릭 실행(백그라운드 기동 + 대시보드 열기 + 태블릿용 LAN 주소 표시)은
+윈도우 `관리자-실행.bat` / 맥 `관리자-실행.command`, 종료는 `관리자-종료.*`.
 
 브라우저에서 `http://localhost:8090/dashboard` → 비밀번호 로그인.
 
@@ -194,11 +197,15 @@ Windows 상시 구동은 [NSSM](https://nssm.cc/) 등으로 `node server.js` 를
 
 **다른 네트워크(도서관)**: 공인 HTTPS 주소가 필요하다.
 공인 IP·포트포워딩 없이 해결하려면 **Cloudflare Tunnel**이 가장 간단하다(무료).
-`winget install --id Cloudflare.cloudflared` 로 설치한 뒤:
+설치는 윈도우 `winget install --id Cloudflare.cloudflared`, 맥 `brew install cloudflared`.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\start-tunnel.ps1
 # 또는 직접: cloudflared tunnel --url http://localhost:8090
+```
+
+```bash
+./start-tunnel.sh    # 맥/리눅스. 서버가 안 떠 있으면 502 만 나오므로 먼저 /health 를 확인한다
 ```
 
 출력에 뜨는 `https://<임의문자열>.trycloudflare.com` 주소를 태블릿마다 관리자 화면
