@@ -40,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -63,6 +64,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -93,7 +95,12 @@ import compose.icons.TablerIcons
 import compose.icons.tablericons.Book
 import compose.icons.tablericons.Microphone
 import compose.icons.tablericons.Movie
+import com.dobedub.kiosk.manual.ManualRepository
+import com.dobedub.kiosk.manual.ManualSlice
+import com.dobedub.kiosk.manual.ManualSlices
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 import kotlin.random.Random
 
@@ -166,6 +173,20 @@ fun HomeScreen(
     institutionLabel: String = ""
 ) {
     var logoTapCount by remember { mutableIntStateOf(0) }
+
+    // 백오피스가 지정한 이용안내 세트. 홈으로 돌아올 때마다 폴더를 다시 훑어서, 체크인으로
+    // 새 이미지가 내려온 뒤 굳이 앱을 재시작하지 않아도 반영되게 한다.
+    val context = LocalContext.current
+    var manualSlices by remember { mutableStateOf<List<ManualSlice>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        manualSlices = withContext(Dispatchers.IO) {
+            val files = ManualRepository(context).list()
+            val slices = ManualSlices.build(files)
+            android.util.Log.i("ManualHome", "이용안내 파일 ${files.size}개 → 조각 ${slices.size}개 " +
+                files.joinToString { "${it.name}(${it.length()}B)" })
+            slices
+        }
+    }
 
     // 이용안내 영역을 얼마나 내렸는지(px 누적). LazyColumn 은 항목 높이가 제각각이라
     // firstVisibleItemIndex 만으로는 실제 스크롤 거리를 알 수 없어, 소비된 스크롤량을
@@ -253,16 +274,23 @@ fun HomeScreen(
                     .nestedScroll(scrollTracker),
                 contentPadding = PaddingValues(bottom = 40.dp)
             ) {
-                items(MANUAL_TILES) { tile ->
-                    val painter = painterResource(id = tile)
-                    val intrinsic = painter.intrinsicSize
-                    val ratio = if (intrinsic.height > 0f) intrinsic.width / intrinsic.height else 1000f / 839f
-                    Image(
-                        painter = painter,
-                        contentDescription = null,
-                        contentScale = ContentScale.FillWidth,
-                        modifier = Modifier.fillMaxWidth().aspectRatio(ratio)
-                    )
+                // 백오피스가 이 기기용 이용안내를 지정했으면 그것을, 아니면 앱 내장 이미지를 쓴다.
+                if (manualSlices.isEmpty()) {
+                    items(MANUAL_TILES) { tile ->
+                        val painter = painterResource(id = tile)
+                        val intrinsic = painter.intrinsicSize
+                        val ratio = if (intrinsic.height > 0f) intrinsic.width / intrinsic.height else 1000f / 839f
+                        Image(
+                            painter = painter,
+                            contentDescription = null,
+                            contentScale = ContentScale.FillWidth,
+                            modifier = Modifier.fillMaxWidth().aspectRatio(ratio)
+                        )
+                    }
+                } else {
+                    items(manualSlices, key = { it.key }) { slice ->
+                        ManualSliceImage(slice)
+                    }
                 }
             }
         }
@@ -273,6 +301,39 @@ fun HomeScreen(
             alpha = mascotAlpha,
             modifier = Modifier.align(Alignment.BottomStart)
         )
+    }
+}
+
+/**
+ * 백오피스가 지정한 이용안내 이미지 한 조각.
+ *
+ * 비율을 먼저 잡아 자리를 확보한 뒤 비트맵을 채워 넣는다 — 디코딩이 끝나고 나서 높이가
+ * 정해지면 스크롤 위치가 튄다. 조각 단위로 그리므로 한 장짜리 아주 긴 이미지를 올려도
+ * 화면에 보이는 만큼만 메모리에 올라간다.
+ */
+@Composable
+private fun ManualSliceImage(slice: ManualSlice) {
+    var bitmap by remember(slice.key) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var widthPx by remember(slice.key) { mutableIntStateOf(0) }
+
+    LaunchedEffect(slice.key, widthPx) {
+        if (widthPx > 0) bitmap = ManualSlices.decode(slice, widthPx)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(slice.aspectRatio)
+            .onSizeChanged { if (it.width > 0) widthPx = it.width }
+    ) {
+        bitmap?.let {
+            Image(
+                bitmap = it.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.FillWidth,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
     }
 }
 

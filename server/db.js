@@ -88,6 +88,21 @@ CREATE TABLE IF NOT EXISTS video_pushes (
   PRIMARY KEY (device_id, media_id)
 );
 
+-- 기기별 홈 화면 이용안내 이미지. 한 기기의 행 전체가 "그 기기의 이용안내 세트"이고,
+-- seq 순서대로 세로로 이어 붙여 보여준다. 행이 하나도 없으면 앱 내장 이미지를 쓴다.
+-- 전체 교체든 낱장 교체든 결국 이 세트를 편집하는 같은 동작이다.
+CREATE TABLE IF NOT EXISTS manual_images (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id     TEXT NOT NULL,
+  seq           INTEGER NOT NULL,      -- 표시 순서(0부터)
+  filename      TEXT NOT NULL,         -- data/manuals/ 하위 저장 파일명
+  original_name TEXT NOT NULL,         -- 관리자가 올린 원본 파일명(화면 표시용)
+  size          INTEGER NOT NULL,
+  sha256        TEXT NOT NULL,
+  uploaded_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_manual_device ON manual_images(device_id, seq);
+
 -- 기기별 체크인 이력(최근 접속 추이 파악용, 과도한 적재 방지 위해 필요 시 정리)
 CREATE TABLE IF NOT EXISTS checkins (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -301,10 +316,12 @@ const stmtDeleteDevice = db.prepare(`DELETE FROM devices WHERE device_id = ?`);
 const stmtDeleteCheckins = db.prepare(`DELETE FROM checkins WHERE device_id = ?`);
 const stmtDeleteVideoQueue = db.prepare(`DELETE FROM video_deletes WHERE device_id = ?`);
 const stmtDeletePushQueueForDevice = db.prepare(`DELETE FROM video_pushes WHERE device_id = ?`);
+const stmtDeleteManualForDevice = db.prepare(`DELETE FROM manual_images WHERE device_id = ?`);
 function deleteDevice(deviceId) {
   stmtDeleteCheckins.run(deviceId);
   stmtDeleteVideoQueue.run(deviceId);
   stmtDeletePushQueueForDevice.run(deviceId);
+  stmtDeleteManualForDevice.run(deviceId);   // 파일 삭제는 server.js 담당(경로를 아는 쪽)
   stmtDeleteDevice.run(deviceId);
 }
 
@@ -343,6 +360,49 @@ const stmtRequestPinReset = db.prepare(`UPDATE devices SET pin_reset = 1 WHERE d
 /** 다음 체크인 때 이 기기의 관리자 PIN을 0000으로 되돌리라고 지시한다(비밀번호 분실 대비). */
 function requestPinReset(deviceId) { stmtRequestPinReset.run(deviceId); }
 
+// ---------- 기기별 이용안내 이미지 ----------
+
+const stmtListManual = db.prepare(
+  `SELECT * FROM manual_images WHERE device_id = ? ORDER BY seq, id`
+);
+const stmtGetManual = db.prepare(`SELECT * FROM manual_images WHERE id = ?`);
+const stmtMaxManualSeq = db.prepare(
+  `SELECT COALESCE(MAX(seq), -1) AS m FROM manual_images WHERE device_id = ?`
+);
+const stmtInsertManual = db.prepare(`
+  INSERT INTO manual_images (device_id, seq, filename, original_name, size, sha256, uploaded_at)
+  VALUES (@device_id, @seq, @filename, @original_name, @size, @sha256, @uploaded_at)
+`);
+const stmtDeleteManual = db.prepare(`DELETE FROM manual_images WHERE id = ?`);
+const stmtSetManualSeq = db.prepare(`UPDATE manual_images SET seq = ? WHERE id = ?`);
+
+function listManual(deviceId) { return stmtListManual.all(deviceId); }
+function getManual(id) { return stmtGetManual.get(id) || null; }
+
+/** 세트 맨 뒤에 덧붙인다. 반환값은 새 행 id. */
+function appendManual(m) {
+  const seq = stmtMaxManualSeq.get(m.device_id).m + 1;
+  return stmtInsertManual.run({ ...m, seq }).lastInsertRowid;
+}
+
+function deleteManual(id) { stmtDeleteManual.run(id); }
+
+/**
+ * 한 장을 위/아래로 한 칸 옮긴다. 옆 행과 seq 를 맞바꾸는 대신 목록 전체를 다시 번호
+ * 매긴다 — 중간에 삭제가 있었어도 seq 에 구멍이 남지 않아 순서가 항상 0..n-1 로 정규화된다.
+ */
+function moveManual(id, dir) {
+  const row = getManual(id);
+  if (!row) return;
+  const list = listManual(row.device_id);
+  const i = list.findIndex(r => r.id === id);
+  const j = i + (dir < 0 ? -1 : 1);
+  if (i < 0 || j < 0 || j >= list.length) return;
+  [list[i], list[j]] = [list[j], list[i]];
+  const tx = db.transaction(rows => rows.forEach((r, k) => stmtSetManualSeq.run(k, r.id)));
+  tx(list);
+}
+
 // ---------- 영상 자료실 ----------
 
 const stmtInsertMedia = db.prepare(`
@@ -378,5 +438,6 @@ module.exports = {
   getRelease, listReleases, getReleaseById, insertRelease, setReleaseFilename, activateRelease,
   requestUpdatePrompt, requestUpdatePromptForOutdated,
   setContactOverride, requestPinReset,
-  insertMedia, setMediaFilename, setMediaThumb, listMedia, getMedia, deleteMedia
+  insertMedia, setMediaFilename, setMediaThumb, listMedia, getMedia, deleteMedia,
+  listManual, getManual, appendManual, deleteManual, moveManual
 };

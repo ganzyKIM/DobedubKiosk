@@ -31,8 +31,10 @@ const ONLINE_MS = CHECKIN_INTERVAL_MS * 2 + 10 * 60 * 1000;
 const STALE_MS = 24 * 60 * 60 * 1000;
 const APK_DIR = path.join(store.DATA_DIR, 'apk');
 const VIDEO_DIR = path.join(store.DATA_DIR, 'videos');
+const MANUAL_DIR = path.join(store.DATA_DIR, 'manuals');
 fs.mkdirSync(APK_DIR, { recursive: true });
 fs.mkdirSync(VIDEO_DIR, { recursive: true });
+fs.mkdirSync(MANUAL_DIR, { recursive: true });
 
 // 기기(VideoRepository)가 인식하는 확장자와 반드시 같아야 한다 — 다르면 다운로드는
 // 되는데 목록에 안 뜨는 상태가 된다.
@@ -70,6 +72,25 @@ const uploadThumb = multer({
   }),
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB
 });
+
+// 이용안내 이미지. 여러 장을 한 번에 올릴 수 있게 array 로 받는다.
+const uploadManual = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, MANUAL_DIR),
+    filename: (req, file, cb) => cb(null, `manual-upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.tmp`)
+  }),
+  limits: { fileSize: 30 * 1024 * 1024, files: 40 }
+});
+
+/**
+ * 기기가 내려받을 때 쓸 파일명. **순서 번호를 이름 앞에 붙인다** — 기기는 파일명을
+ * 정렬하기만 하면 표시 순서가 나오므로, 순서를 따로 저장할 필요가 없다.
+ * 뒤에 내용 해시를 붙여서, 순서만 바뀐 경우 기기가 재다운로드 없이 이름만 바꿔 재사용한다.
+ */
+function manualDeviceName(row, seq) {
+  const ext = (path.extname(row.original_name) || '.png').toLowerCase();
+  return `${String(seq).padStart(3, '0')}_${row.sha256.slice(0, 12)}${ext}`;
+}
 
 function sha256File(p) {
   return new Promise((resolve, reject) => {
@@ -236,6 +257,14 @@ app.post('/api/checkin', (req, res) => {
   // 기기가 보유했다고 방금 보고한 영상 중 썸네일이 등록된 것들. 기기는 없는 것만(또는
   // 크기가 달라진 것만) 내려받는다. 지금 push 로 내려가는 영상의 썸네일은 다음 체크인에
   // 인벤토리에 잡히면서 따라간다 — 경로를 하나로 유지하기 위한 의도적 지연.
+  // 이용안내 세트. 순서 번호가 붙은 파일명을 그대로 내려보내므로, 기기는 파일명만
+  // 맞추면 순서까지 맞는다. 빈 배열이면 기기가 자기 이미지를 지우고 내장본으로 돌아간다.
+  resp.manualImages = store.listManual(deviceId).map((m, i) => ({
+    name: manualDeviceName(m, i),
+    url: `${base.replace(/\/$/, '')}/manual/${m.id}/download`,
+    size: m.size
+  }));
+
   const invNames = new Set((Array.isArray(b.videos) ? b.videos : []).map(v => v && v.name));
   resp.thumbs = store.listMedia()
     .filter(m => m.thumb && invNames.has(m.original_name))
@@ -286,6 +315,15 @@ app.get('/media/:id/download', (req, res) => {
   if (!fs.existsSync(p)) return res.status(404).send('file missing');
   res.setHeader('Content-Type', 'video/mp4');
   res.setHeader('Content-Disposition', `attachment; filename="${media.original_name}"`);
+  res.sendFile(p);
+});
+
+// 이용안내 이미지 제공(기기·대시보드 미리보기 공용). 인증 없이 연다.
+app.get('/manual/:id/download', (req, res) => {
+  const row = store.getManual(Number(req.params.id));
+  if (!row) return res.status(404).send('manual image not found');
+  const p = path.join(MANUAL_DIR, row.filename);
+  if (!fs.existsSync(p)) return res.status(404).send('file missing');
   res.sendFile(p);
 });
 
@@ -347,6 +385,13 @@ app.get('/dashboard', auth.requireAuth, (req, res) => {
     try { d.videoList = d.videos ? JSON.parse(d.videos) : []; } catch (e) { d.videoList = []; }
     d.pendingDeletes = store.pendingVideoDeletes(d.device_id);
     d.pendingPushes = store.pendingVideoPushes(d.device_id);
+    d.manualImages = store.listManual(d.device_id);
+  }
+  // "다른 기기에서 가져오기" 선택지 — 이용안내가 등록된 다른 기기들.
+  for (const d of devices) {
+    d.otherDevices = devices
+      .filter(o => o.device_id !== d.device_id && o.manualImages.length > 0)
+      .map(o => ({ device_id: o.device_id, app_label: o.app_label, count: o.manualImages.length }));
   }
   const versionDist = [...distMap.values()].sort((a, b) => (b.version_code || 0) - (a.version_code || 0));
 
@@ -461,7 +506,103 @@ app.post('/device/pin-reset', auth.requireAuth, (req, res) => {
 });
 
 app.post('/device/delete', auth.requireAuth, (req, res) => {
-  if (req.body.deviceId) store.deleteDevice(req.body.deviceId);
+  if (req.body.deviceId) {
+    // DB 행보다 파일을 먼저 지운다 — 순서가 반대면 경로를 잃어 고아 파일이 남는다.
+    for (const m of store.listManual(String(req.body.deviceId))) {
+      try { fs.unlinkSync(path.join(MANUAL_DIR, m.filename)); } catch (e) { /* 이미 없을 수 있음 */ }
+    }
+    store.deleteDevice(req.body.deviceId);
+  }
+  backToReferer(req, res);
+});
+
+// ---------- 기기별 이용안내 이미지 ----------
+//
+// 한 기기의 행 전체가 그 기기의 세트다. 관리자가 이 세트를 편집하면 기기는 다음 접속 때
+// 자기 폴더를 세트와 똑같이 맞춘다(없으면 받고, 빠진 건 지운다). 그래서 "전체 교체"와
+// "낱장 교체"가 같은 동작이 된다 — 세트를 비우면 앱 내장 이미지로 돌아간다.
+
+app.post('/device/manual/upload', auth.requireAuth, uploadManual.array('images', 40), async (req, res) => {
+  const deviceId = String(req.body.deviceId || '');
+  const files = req.files || [];
+  if (!deviceId || files.length === 0) {
+    files.forEach(f => { try { fs.unlinkSync(f.path); } catch (e) {} });
+    return res.status(400).send('기기와 이미지 파일이 필요합니다.');
+  }
+  try {
+    // 여러 장을 한 번에 고르면 브라우저가 순서를 보장하지 않는다 — 파일명으로 정렬해
+    // 관리자가 의도한 순서(01, 02, ...)를 살린다. 순서는 나중에 화면에서 조정할 수 있다.
+    files.sort((a, b) => String(a.originalname).localeCompare(String(b.originalname), 'ko', { numeric: true }));
+    for (const f of files) {
+      const sha = await sha256File(f.path);
+      const original = path.basename(String(f.originalname || 'image.png'));
+      const id = store.appendManual({
+        device_id: deviceId,
+        filename: 'pending',
+        original_name: original.slice(0, 200),
+        size: fs.statSync(f.path).size,
+        sha256: sha,
+        uploaded_at: Date.now()
+      });
+      const stored = `manual-${id}${(path.extname(original) || '.png').toLowerCase()}`;
+      fs.renameSync(f.path, path.join(MANUAL_DIR, stored));
+      store.db.prepare('UPDATE manual_images SET filename = ? WHERE id = ?').run(stored, id);
+    }
+    backToReferer(req, res);
+  } catch (e) {
+    console.error('manual upload error', e);
+    files.forEach(f => { try { fs.unlinkSync(f.path); } catch (_) {} });
+    res.status(500).send('이용안내 이미지 처리 중 오류: ' + e.message);
+  }
+});
+
+app.post('/device/manual/delete', auth.requireAuth, (req, res) => {
+  const row = store.getManual(Number(req.body.id));
+  if (row) {
+    try { fs.unlinkSync(path.join(MANUAL_DIR, row.filename)); } catch (e) { /* */ }
+    store.deleteManual(row.id);
+  }
+  backToReferer(req, res);
+});
+
+app.post('/device/manual/move', auth.requireAuth, (req, res) => {
+  store.moveManual(Number(req.body.id), req.body.dir === 'up' ? -1 : 1);
+  backToReferer(req, res);
+});
+
+// 세트를 통째로 비운다 = 앱 내장 이용안내로 복귀.
+app.post('/device/manual/clear', auth.requireAuth, (req, res) => {
+  const deviceId = String(req.body.deviceId || '');
+  for (const m of store.listManual(deviceId)) {
+    try { fs.unlinkSync(path.join(MANUAL_DIR, m.filename)); } catch (e) { /* */ }
+    store.deleteManual(m.id);
+  }
+  backToReferer(req, res);
+});
+
+// 다른 기기의 세트를 그대로 복사해온다. 도서관마다 같은 안내를 쓸 때 매번 다시 올리지
+// 않게 하는 용도 — 파일도 함께 복제해서 원본 기기의 세트를 지워도 영향받지 않는다.
+app.post('/device/manual/copy', auth.requireAuth, (req, res) => {
+  const to = String(req.body.deviceId || '');
+  const from = String(req.body.fromDeviceId || '');
+  if (!to || !from || to === from) return backToReferer(req, res);
+  for (const m of store.listManual(to)) {
+    try { fs.unlinkSync(path.join(MANUAL_DIR, m.filename)); } catch (e) { /* */ }
+    store.deleteManual(m.id);
+  }
+  for (const m of store.listManual(from)) {
+    const id = store.appendManual({
+      device_id: to,
+      filename: 'pending',
+      original_name: m.original_name,
+      size: m.size,
+      sha256: m.sha256,
+      uploaded_at: Date.now()
+    });
+    const stored = `manual-${id}${(path.extname(m.filename) || '.png').toLowerCase()}`;
+    fs.copyFileSync(path.join(MANUAL_DIR, m.filename), path.join(MANUAL_DIR, stored));
+    store.db.prepare('UPDATE manual_images SET filename = ? WHERE id = ?').run(stored, id);
+  }
   backToReferer(req, res);
 });
 
