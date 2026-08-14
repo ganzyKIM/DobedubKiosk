@@ -412,13 +412,22 @@ app.get('/download/app.apk', (req, res) => {
 // 영상 자료실 다운로드(기기가 체크인 응답의 pushVideos[].url 로 접근). 인증 없이 열어둔다
 // — APK 다운로드와 동일한 성격(공개 파일 URL). res.sendFile 은 Range 헤더를 지원하므로
 // 대용량 파일도 중간에 끊겨도 이어받기가 가능하다.
+// HTTP 헤더는 ISO-8859-1 만 허용된다. 한글 파일명을 filename="..." 에 그대로 넣으면
+// Node 가 ERR_INVALID_CHAR 를 던져 500 이 된다 — 실제로 이것 때문에 한글 이름 영상의
+// push 가 전부 실패했다(구버전 앱은 진행률 보고가 없어 아무도 몰랐다). RFC 5987 의
+// filename*=UTF-8'' 인코딩을 쓰고, 옛 클라이언트용 ASCII 폴백을 같이 싣는다.
+function contentDisposition(name) {
+  const fallback = name.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, "'");
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+}
+
 app.get('/media/:id/download', (req, res) => {
   const media = store.getMedia(Number(req.params.id));
   if (!media) return res.status(404).send('media not found');
   const p = path.join(VIDEO_DIR, media.filename);
   if (!fs.existsSync(p)) return res.status(404).send('file missing');
   res.setHeader('Content-Type', 'video/mp4');
-  res.setHeader('Content-Disposition', `attachment; filename="${media.original_name}"`);
+  res.setHeader('Content-Disposition', contentDisposition(media.original_name));
   res.sendFile(p);
 });
 
