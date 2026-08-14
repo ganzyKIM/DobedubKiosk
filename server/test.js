@@ -172,6 +172,17 @@ async function main() {
     assert.equal(resp.checkinNow, true);
   });
 
+  await test('한글 이름 영상 다운로드가 200 (Content-Disposition 헤더 회귀 방지)', async () => {
+    // HTTP 헤더는 ISO-8859-1 만 허용 — 한글을 filename= 에 그대로 넣으면 500 이 난다.
+    // 실기기에서 한글 영상 push 전멸의 원인이었다.
+    const r = await fetch(`${BASE}/media/${mediaId}/download`);
+    assert.equal(r.status, 200, `다운로드 HTTP ${r.status}`);
+    const buf = Buffer.from(await r.arrayBuffer());
+    assert.equal(buf.length, 1024, '파일 크기 불일치');
+    const cd = r.headers.get('content-disposition') || '';
+    assert.ok(cd.includes("filename*=UTF-8''"), 'RFC 5987 인코딩 누락: ' + cd);
+  });
+
   await test('대시보드 HTML 에 중첩 <form> 없음(취소 버그 회귀 방지)', async () => {
     // 대기 항목이 있는 상태의 대시보드를 실제로 렌더시켜 검사한다.
     const html = await (await fetch(`${BASE}/dashboard`, { headers: { Cookie: cookie } })).text();
