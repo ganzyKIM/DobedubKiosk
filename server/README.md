@@ -153,21 +153,36 @@ Windows 상시 구동은 [NSSM](https://nssm.cc/) 등으로 `node server.js` 를
     태블릿 대부분에서 안 잡힌다(Google 위치 정확도가 꺼진 채로 나감 → `network` provider
     비활성 → 실내에서 GPS만 남아 fix 불가). AP는 항상 잡힌다.
   - `lat`/`lng` 등 좌표는 NLP가 켜진 기기에서만 온다. 없으면 서버가 기존 값을 유지한다.
-  응답 `{update, versionCode, versionName, apkUrl, sha256, size, promptUpdate, deleteVideos,
-  pushVideos, setContact?, resetPin?}`.
+  응답 `{update, versionCode, versionName, apkUrl, sha256, size, promptUpdate, forceUpdate?,
+  deleteVideos, pushVideos, setContact?, resetPin?}`.
   - `promptUpdate: true` — 관리자가 이 기기에 확인창 요청을 걸어뒀다는 뜻(§강제 업데이트 알림).
+  - `forceUpdate: true` — 관리자의 "즉시 업데이트". 기기는 사용(재생) 중 보호와 확인창을
+    모두 건너뛰고 바로 설치한다. `promptUpdate` 보다 우선.
   - `deleteVideos: string[]` — 기기가 삭제해야 할 영상 파일명 목록.
-  - `pushVideos: {name,url,sha256,size}[]` — 기기가 내려받아야 할 영상 목록.
-  - `setContact: string` — 이 기기의 문의 연락처를 이 값으로 바꾸라는 지시.
-  - `resetPin: true` — 관리자 PIN을 공장 기본값 0000 으로 되돌리라는 지시(PIN 분실 복구).
+  - `pushVideos: {name,url,sha256,size,ask}[]` — 기기가 내려받아야 할 영상 목록.
+    `ask: true` 면 바로 받지 않고 기기 화면에서 동의를 구한다("나중에"면 대기열에 남아
+    다음 체크인 때 재질문). 이 필드를 모르는 구버전 앱(v2.2 이하)은 즉시 받는다(기존 동작).
+- `GET /api/poke?deviceId=` — **즉시 지시 채널(long-poll).** 앱이 체크인 사이를 delay 대신
+  이 요청으로 대기한다(서버가 최대 50초 붙잡음). 관리자 지시가 오면 `{checkinNow:true}` 로
+  즉시 응답해 기기를 깨운다. **지시 자체는 항상 체크인 응답으로만 내려간다** — 이 채널은
+  깨우기만 한다. 대기자가 없을 때 온 깨움은 10분간 기억했다가 다음 접속에 바로 응답한다
+  (기기가 체크인 처리 중인 틈에 지시가 유실되는 레이스 방지 — 실기기에서 재현됐던 문제).
+- `POST /api/progress` — 기기가 다운로드 진행률을 보고. body `{deviceId, kind: video|apk,
+  name, received, total, status: downloading|done|failed, error?}`. 서버 메모리에만 저장
+  (재시작하면 사라짐 — 다음 보고가 다시 채운다).
+- `GET /api/transfers` — (로그인 필요) 진행 중/최근 전송 목록. 대시보드가 2초 폴링해
+  퍼센트 칩을 그린다. 완료·실패 항목은 1분, 보고가 끊긴 항목은 10분 뒤 청소된다.
 - `GET /api/latest` — 현재 매니페스트(디버그용, 기기 컨텍스트가 없어 `promptUpdate`는 항상 false).
 - `GET /download/app.apk` — 현재 활성 배포 APK.
 - `GET /media/:id/download` — 영상 자료실 파일(공개, Range 지원 — 대용량 이어받기 가능).
+  ⚠ Content-Disposition 은 RFC 5987(`filename*=UTF-8''`)로 싣는다 — HTTP 헤더는
+  ISO-8859-1 만 허용이라 한글 파일명을 그대로 넣으면 500이 난다(실제로 그랬다).
 
 대시보드 폼이 호출하는 관리용 라우트(로그인 필요): `/release/upload`, `/release/rollback`,
-`/release/notify-outdated`, `/device/update-prompt`, `/device/label`, `/device/contact`,
-`/device/pin-reset`, `/device/delete`, `/device/video/delete`, `/media/upload`, `/media/push`,
-`/media/push/cancel`, `/media/delete`.
+`/release/notify-outdated`, `/device/update-prompt`, `/device/update-force`, `/device/label`,
+`/device/contact`, `/device/pin-reset`, `/device/delete`, `/device/video/delete`,
+`/media/upload`, `/media/push`(+`mode=force|ask`), `/media/push/cancel`, `/media/delete`.
+영상 push/삭제·업데이트 알림/강제는 접수 즉시 `wakeDevice()` 로 해당 기기를 깨운다.
 
 ### 지시가 먹혔는지 확인하는 방식
 
@@ -180,6 +195,8 @@ Windows 상시 구동은 [NSSM](https://nssm.cc/) 등으로 `node server.js` 를
 |---|---|---|
 | `setContact` | `contact_override` ≠ 기기가 보고한 `contact` | 두 값이 같아지면 자동으로 안 보냄 |
 | `resetPin` | `pin_reset = 1` | 기기가 `hasCustomPin: false` 를 보고하면 플래그 해제 |
+| `forceUpdate` | `force_update = 1` | 기기가 최신 `versionCode` 를 보고하면 플래그 해제 |
+| `pushVideos` | 대기열에 행이 남아 있는 동안 | 기기 인벤토리에 그 파일명이 나타나면 행 제거 |
 
 `hasCustomPin` 을 안 보내는 구버전 앱(v1.9 이하)의 체크인은 완료 판정에 쓰지 않는다 —
 값 없음을 false 로 오해하면 지시가 실행되지도 않은 채 지워진다.
