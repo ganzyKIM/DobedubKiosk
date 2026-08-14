@@ -129,7 +129,11 @@ for (const stmt of [
   `ALTER TABLE devices ADD COLUMN loc_accuracy REAL`,
   `ALTER TABLE devices ADD COLUMN located_at INTEGER`,
   `ALTER TABLE media_library ADD COLUMN thumb TEXT`,
-  `ALTER TABLE devices ADD COLUMN checkin_interval_ms INTEGER`
+  `ALTER TABLE devices ADD COLUMN checkin_interval_ms INTEGER`,
+  // 영상 배포 방식: 'force' = 기기가 받는 즉시 다운로드, 'ask' = 기기 화면에서 동의 후 다운로드
+  `ALTER TABLE video_pushes ADD COLUMN mode TEXT NOT NULL DEFAULT 'force'`,
+  // 1이면 다음 체크인 때 사용 여부와 무관하게 즉시 설치(관리자의 명시적 강제 업데이트)
+  `ALTER TABLE devices ADD COLUMN force_update INTEGER NOT NULL DEFAULT 0`
 ]) {
   try { db.exec(stmt); } catch (e) { /* already exists */ }
 }
@@ -201,19 +205,23 @@ const stmtClearDelete = db.prepare(
 function queueVideoDelete(deviceId, filename) { stmtQueueDelete.run(deviceId, filename, Date.now()); }
 function pendingVideoDeletes(deviceId) { return stmtPendingDeletes.all(deviceId).map(r => r.filename); }
 
-// 영상 배포(푸시) 대기열
+// 영상 배포(푸시) 대기열. 같은 영상을 다시 보내며 방식만 바꾸는 경우가 있어(대기 중
+// "물어보기"를 "강제"로 승격 등) 중복 삽입은 무시하되 mode 는 최신 값으로 덮어쓴다.
 const stmtQueuePush = db.prepare(
-  `INSERT OR IGNORE INTO video_pushes (device_id, media_id, queued_at) VALUES (?, ?, ?)`
+  `INSERT INTO video_pushes (device_id, media_id, queued_at, mode) VALUES (?, ?, ?, ?)
+   ON CONFLICT(device_id, media_id) DO UPDATE SET mode = excluded.mode`
 );
 const stmtPendingPushes = db.prepare(`
-  SELECT vp.media_id AS media_id, m.original_name AS original_name, m.filename AS filename,
-         m.size AS size, m.sha256 AS sha256
+  SELECT vp.media_id AS media_id, vp.mode AS mode, m.original_name AS original_name,
+         m.filename AS filename, m.size AS size, m.sha256 AS sha256
   FROM video_pushes vp JOIN media_library m ON m.id = vp.media_id
   WHERE vp.device_id = ?
 `);
 const stmtClearPush = db.prepare(`DELETE FROM video_pushes WHERE device_id = ? AND media_id = ?`);
 const stmtClearPushesForMedia = db.prepare(`DELETE FROM video_pushes WHERE media_id = ?`);
-function queueVideoPush(deviceId, mediaId) { stmtQueuePush.run(deviceId, mediaId, Date.now()); }
+function queueVideoPush(deviceId, mediaId, mode) {
+  stmtQueuePush.run(deviceId, mediaId, Date.now(), mode === 'ask' ? 'ask' : 'force');
+}
 function pendingVideoPushes(deviceId) { return stmtPendingPushes.all(deviceId); }
 function clearVideoPush(deviceId, mediaId) { stmtClearPush.run(deviceId, mediaId); }
 
@@ -222,6 +230,7 @@ const stmtInsertCheckin = db.prepare(
 );
 
 const stmtClearPrompt = db.prepare(`UPDATE devices SET update_prompt = 0 WHERE device_id = ?`);
+const stmtClearForce = db.prepare(`UPDATE devices SET force_update = 0 WHERE device_id = ?`);
 const stmtClearPinReset = db.prepare(`UPDATE devices SET pin_reset = 0 WHERE device_id = ?`);
 
 function recordCheckin(d) {
@@ -268,10 +277,11 @@ function recordCheckin(d) {
     if (names.has(p.original_name)) stmtClearPush.run(d.deviceId, p.media_id);
   }
 
-  // 업데이트 확인창 자동 해제: 신고된 버전이 이미 현재 배포판 이상이면 더 물어볼 필요 없다.
+  // 업데이트 확인창/강제 지시 자동 해제: 신고된 버전이 이미 현재 배포판 이상이면 끝난 것.
   const active = getRelease();
   if (active && Number.isFinite(d.versionCode) && d.versionCode >= active.version_code) {
     stmtClearPrompt.run(d.deviceId);
+    stmtClearForce.run(d.deviceId);
   }
 }
 
@@ -336,6 +346,10 @@ function deleteDevice(deviceId) {
 const stmtRequestPrompt = db.prepare(`UPDATE devices SET update_prompt = 1 WHERE device_id = ?`);
 /** 이 기기 하나에 "업데이트 하시겠어요?" 확인창을 다음 체크인 때 띄우라고 지시한다. */
 function requestUpdatePrompt(deviceId) { stmtRequestPrompt.run(deviceId); }
+
+const stmtRequestForce = db.prepare(`UPDATE devices SET force_update = 1 WHERE device_id = ?`);
+/** 이 기기를 사용(재생) 중이어도 다음 체크인 때 즉시 설치하라고 지시한다(관리자 명시 선택). */
+function requestForceUpdate(deviceId) { stmtRequestForce.run(deviceId); }
 
 const stmtOutdatedDeviceIds = db.prepare(
   `SELECT device_id FROM devices WHERE version_code IS NULL OR version_code < ?`
@@ -442,7 +456,7 @@ module.exports = {
   queueVideoDelete, pendingVideoDeletes,
   queueVideoPush, pendingVideoPushes, clearVideoPush,
   getRelease, listReleases, getReleaseById, insertRelease, setReleaseFilename, activateRelease,
-  requestUpdatePrompt, requestUpdatePromptForOutdated,
+  requestUpdatePrompt, requestUpdatePromptForOutdated, requestForceUpdate,
   setContactOverride, requestPinReset,
   insertMedia, setMediaFilename, setMediaThumb, listMedia, getMedia, deleteMedia,
   listManual, getManual, appendManual, deleteManual, moveManual

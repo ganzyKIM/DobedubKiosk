@@ -27,8 +27,8 @@ android {
         targetSdk = 34
         // versionCode: 릴리스마다 반드시 +1 (정수). 함대 서버가 이 값이 기기보다 크면 자동 업데이트 트리거.
         // versionName: 사람이 읽는 표시용 버전(임의 형식). 관리자 화면/백오피스에 노출.
-        versionCode = 21
-        versionName = "2.2"
+        versionCode = 22
+        versionName = "2.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

@@ -135,7 +135,7 @@ TB-J606F 내장 마이크가 약해 더빙 목소리가 원본 성우보다 훨�
 | `server/start-tunnel.ps1` / `.sh` | 공인 HTTPS 원격 접속 경로(Cloudflare Quick Tunnel) 실행 스크립트 |
 | `기획문서.md` | 최초 기획 배경 |
 
-## 현재 상태 (2026-08-14) — v2.2 / `versionCode=21`
+## 현재 상태 (2026-08-15) — v2.3 / `versionCode=22`
 
 `versionCode`는 절대 되돌리지 말 것(업데이트 트리거 기준). versionName은 v1.0에서 한 번
 리셋했고 이후 계속 올라간다.
@@ -237,6 +237,30 @@ TB-J606F 내장 마이크가 약해 더빙 목소리가 원본 성우보다 훨�
     자는 기기까지 정확히 맞추려면 `AlarmManager.setExactAndAllowWhileIdle` 로 가야 한다.
   - `checkins` 테이블에 **보존 정책이 없다**. 3대 기준 연 16만 행(≈6MB)이라 아직 방치해도
     되지만, 기기가 수십 대로 늘면 정리(예: 90일)를 넣을 것.
+- v2.3 즉시 push + 전송 진행률 + 취소 버그 수정.
+  - **즉시 지시 채널**: 앱이 체크인 사이를 `delay` 대신 서버 long-poll(`GET /api/poke`,
+    50초 유지)로 대기(`AppUpdater.waitForWake`). 관리자 지시(영상 push/삭제, 업데이트
+    알림/강제)가 오면 `wakeDevice()` 가 깨워 **몇 초 안에 체크인**한다. **지시는 여전히
+    체크인 응답으로만 내려간다** — poke 는 깨우기만 하므로 유실·구서버(404 폴백)·오프라인
+    모두 기존 경로로 수렴한다. 종료 시 대기 연결을 먼저 놓아줘야 graceful shutdown 이
+    10초 타이머에 안 걸린다.
+  - **영상 push 에 mode**(`video_pushes.mode`): `force`=바로 다운로드(기본),
+    `ask`=기기 화면 동의 후. ask 로 보낸 걸 force 로 다시 보내면 mode 만 승격(upsert).
+    "나중에"를 누르면 대기열에 남아 다음 체크인 때 다시 묻는다.
+  - **즉시 업데이트**(`devices.force_update`): 재생 중이어도 설치(canInstallNow·promptUpdate
+    둘 다 무시). 완료 판정은 PIN 초기화와 같은 규약 — 기기가 최신 versionCode 를 보고하면
+    해제. 대시보드 confirm 문구가 "재생이 끊긴다"를 고지한다.
+  - **전송 진행률**: 앱이 다운로드 중 1.5초/5%p 마다 `POST /api/progress`(서버 인메모리,
+    10분 sweep) + `DownloadState`(StateFlow). 대시보드는 `/api/transfers` 2초 폴링으로
+    모달·기기 행에 퍼센트 표시, 태블릿은 동영상 목록 화면에 "받는 중" 진행 카드.
+    완료 시 `LaunchedEffect(transfers)` 가 목록을 재스캔해 새 영상이 바로 뜬다.
+  - **"전송 대기" 취소가 안 되던 버그**: 취소 폼이 push 폼 **안에** 중첩돼 있었다.
+    HTML 은 중첩 `<form>` 을 허용하지 않아 브라우저가 안쪽 태그를 버리고, 취소 버튼이
+    push 폼의 submit 이 되어 "보낼 영상을 선택하세요" 알림만 떴다. 모달을 재구성해 push
+    폼은 선택 목록만 감싸고 푸터 버튼은 `form` 속성으로 연결. **`server/test.js` 에 렌더된
+    HTML 의 중첩 form 회귀 테스트가 있다** — 모달에 폼을 추가할 때 반드시 `npm test`.
+  - 서버 통합 테스트 신설: `server/test.js` (`npm test`, 의존성 없음, 임시 DATA_DIR 에
+    실서버를 띄워 9개 시나리오 검증).
 - v1.6 서버 주소 자동 찾기 + 축약 입력, 배포 이력 10개 페이지네이션.
   이때 `network_security_config`를 **평문 HTTP 전면 허용**으로 바꿨다 — 사설 IP 대역
   와일드카드를 지원하지 않아 선별 허용이 불가능. 웹뷰는 코드로 도메인 화이트리스트가
