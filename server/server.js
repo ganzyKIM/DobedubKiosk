@@ -73,6 +73,22 @@ const uploadThumb = multer({
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB
 });
 
+// 앱에 내장된 기본 이용안내 이미지(관리 화면 미리보기 전용).
+// 저장소에 3.4MB를 복제하지 않으려고 앱 리소스 폴더를 그대로 읽는다 — 서버가 리포지토리
+// 안에서 도는 지금 구성에서만 성립하므로, 폴더가 없으면 조용히 "미리보기 없음"이 된다.
+const BUILTIN_MANUAL_DIR = process.env.BUILTIN_MANUAL_DIR ||
+  path.join(__dirname, '..', 'app', 'src', 'main', 'res', 'drawable-nodpi');
+
+function builtinManualFiles() {
+  try {
+    return fs.readdirSync(BUILTIN_MANUAL_DIR)
+      .filter(n => /^user_manual_\d+\.png$/.test(n))
+      .sort();
+  } catch (e) {
+    return [];
+  }
+}
+
 // 이용안내 이미지. 여러 장을 한 번에 올릴 수 있게 array 로 받는다.
 const uploadManual = multer({
   storage: multer.diskStorage({
@@ -318,6 +334,15 @@ app.get('/media/:id/download', (req, res) => {
   res.sendFile(p);
 });
 
+// 앱 내장 기본 이용안내 미리보기. 파일명을 정규식으로 검증해 경로 조작을 막는다.
+app.get('/manual/builtin/:name', (req, res) => {
+  const name = String(req.params.name || '');
+  if (!/^user_manual_\d+\.png$/.test(name)) return res.status(400).send('bad name');
+  const p = path.join(BUILTIN_MANUAL_DIR, name);
+  if (!fs.existsSync(p)) return res.status(404).send('not found');
+  res.sendFile(p);
+});
+
 // 이용안내 이미지 제공(기기·대시보드 미리보기 공용). 인증 없이 연다.
 app.get('/manual/:id/download', (req, res) => {
   const row = store.getManual(Number(req.params.id));
@@ -416,6 +441,7 @@ app.get('/dashboard', auth.requireAuth, (req, res) => {
     relPaging: { page: relPageNum, pages: relPages, total: allReleases.length },
     media: store.listMedia(),
     mediaDir: VIDEO_DIR,
+    builtinManual: builtinManualFiles(),
     stats: { total: devices.length, online, offline, onLatest, versionDist },
     thresholds: { onlineMs: ONLINE_MS, staleMs: STALE_MS }
   }));

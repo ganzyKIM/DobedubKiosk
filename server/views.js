@@ -149,23 +149,32 @@ input[type=file]{padding:6px;font-size:12px}
 form.inline{display:inline}
 
 /* ── 모달 ────────────────────────────────────────────────── */
+/* dialog 는 top layer 에 뜨지만 CSS 는 DOM 부모에서 상속된다. 표 안에 두면 셀의
+   text-align:right / white-space:nowrap 이 그대로 넘어와 글이 우측정렬되고 줄바꿈이
+   막혀 가로 스크롤이 생긴다(실제로 그랬다). 지금은 표 밖에 두지만, 어디에 두더라도
+   깨지지 않도록 여기서 명시적으로 되돌린다. */
 dialog{
   border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink);
   padding:0;width:min(560px,calc(100vw - 32px));box-shadow:0 12px 40px rgba(0,0,0,.22);
+  text-align:left;white-space:normal;font-size:14px;line-height:1.55;
 }
+dialog *{white-space:normal}
+dialog .nowrap,dialog .mono.nowrap{white-space:nowrap}
 dialog::backdrop{background:rgba(20,24,16,.5)}
 .m-h{padding:16px 20px 12px;border-bottom:1px solid var(--line-2)}
 .m-h h3{margin:0;font-size:15px;font-weight:650;letter-spacing:-.01em}
 .m-h .who{color:var(--muted);font-size:12.5px;margin-top:2px}
-.m-b{padding:16px 20px;max-height:min(60vh,520px);overflow-y:auto}
+.m-b{padding:16px 20px;max-height:min(60vh,520px);overflow-y:auto;overflow-x:hidden}
 .m-f{padding:12px 20px;border-top:1px solid var(--line-2);background:var(--surface-2);display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
 .m-sec+.m-sec{margin-top:20px;padding-top:18px;border-top:1px solid var(--line-2)}
 .m-sec>h4{margin:0 0 4px;font-size:12px;font-weight:650;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
 .m-sec>p{margin:0 0 10px;color:var(--muted);font-size:12.5px;line-height:1.6}
 .list{display:flex;flex-direction:column}
-.item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line-2)}
+.item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line-2);flex-wrap:wrap}
 .item:last-child{border-bottom:0}
-.item .name{flex:1;min-width:0;word-break:break-all;font-size:13px}
+.item .name{flex:1 1 200px;min-width:0;overflow-wrap:anywhere;word-break:break-word;font-size:13px}
+.strip{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px}
+.strip img{width:64px;height:auto;border-radius:6px;border:1px solid var(--line);flex:none;background:var(--surface-2)}
 .pick{cursor:pointer}
 .pick.off{opacity:.5;cursor:default}
 .thumb{width:40px;height:58px;object-fit:cover;border-radius:6px;background:var(--line-2);flex:none;display:block}
@@ -175,10 +184,25 @@ dialog::backdrop{background:rgba(20,24,16,.5)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 `;
 
+// 모달 안의 이미지는 열 때 비로소 받는다.
+// `loading="lazy"` 는 닫힌 <dialog> 안에서 "뷰포트 밖"으로 간주돼 로드가 지연되는데,
+// 모달을 열어도 트리거되지 않아 빈 칸만 보였다(실측). 그렇다고 lazy 를 빼면 기기 3대 ×
+// 내장 12장 = 10MB 를 대시보드 열 때마다 받는다. 그래서 data-src → src 로 직접 바꾼다.
+const SCRIPT = `
+function openModal(id){
+  var d=document.getElementById(id);
+  if(!d) return;
+  d.querySelectorAll('img[data-src]').forEach(function(i){
+    i.src=i.getAttribute('data-src'); i.removeAttribute('data-src');
+  });
+  d.showModal();
+}`;
+
 function page(title, body) {
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(title)}</title><style>${STYLE}</style></head><body><div class="wrap">${body}</div></body></html>`;
+<title>${esc(title)}</title><style>${STYLE}</style></head><body><div class="wrap">${body}</div>
+<script>${SCRIPT}</script></body></html>`;
 }
 
 function loginPage(error) {
@@ -201,7 +225,7 @@ function loginPage(error) {
 // 기기 현황
 // ─────────────────────────────────────────────────────────────
 
-function deviceModals(d, media) {
+function deviceModals(d, media, builtin) {
   const vids = Array.isArray(d.videoList) ? d.videoList : [];
   const pendingDel = new Set(d.pendingDeletes || []);
   const pendingPush = d.pendingPushes || [];
@@ -269,7 +293,7 @@ function deviceModals(d, media) {
 
   // ── 이용안내 ──
   const manualRows = manual.map((m, i) => `<div class="item">
-      <img class="thumb" src="/manual/${m.id}/download" alt="" loading="lazy">
+      <img class="thumb" data-src="/manual/${m.id}/download" alt="">
       <span class="name"><span class="mono">${String(i + 1).padStart(2, '0')}</span> ${esc(m.original_name)}
         <span class="mono">${fmtBytes(m.size)}</span></span>
       <form class="inline" method="post" action="/device/manual/move">
@@ -286,14 +310,23 @@ function deviceModals(d, media) {
       </form>
     </div>`).join('');
 
+  // 세트가 비어 있으면 "지금 이 태블릿에 실제로 뜨는 화면"이 앱 내장본이므로 그걸 보여준다.
+  const builtinPreview = builtin.length
+    ? `<div class="strip">${builtin.map((n, i) =>
+        `<img data-src="/manual/builtin/${encodeURIComponent(n)}" alt="기본 이용안내 ${i + 1}">`).join('')}</div>`
+    : '<p class="muted small">미리보기를 찾을 수 없습니다(앱 리소스 폴더가 이 서버에 없음).</p>';
+
   const manualModal = `<dialog id="man-${esc(d.device_id)}">
       <div class="m-h"><h3>이용안내 이미지</h3><div class="who">${who}</div></div>
       <div class="m-b">
         <div class="m-sec">
-          <h4>현재 세트 ${manual.length ? `${manual.length}장` : '(앱 내장)'}</h4>
+          <h4>${manual.length ? `현재 이 태블릿의 이미지 ${manual.length}장` : '현재: 앱 내장 기본 이용안내'}</h4>
           <p>홈 화면 아래에 위에서부터 순서대로 이어 붙고, 가로폭은 화면에 맞춰 세로로 스크롤됩니다.
              한 장짜리 긴 이미지도, 여러 장도 됩니다. 비워두면 앱에 내장된 기본 안내를 씁니다.</p>
-          <div class="list">${manualRows || '<p class="muted small">등록된 이미지가 없어 앱 내장 이용안내를 쓰고 있습니다.</p>'}</div>
+          ${manual.length
+            ? `<div class="list">${manualRows}</div>`
+            : `${builtinPreview}
+               <p class="muted small" style="margin:8px 0 0;">아래에서 이미지를 추가하면 이 기본 안내 대신 그 이미지들이 표시됩니다.</p>`}
         </div>
         <div class="m-sec">
           <h4>이미지 추가</h4>
@@ -385,8 +418,12 @@ function deviceModals(d, media) {
   return videoModal + manualModal + manageModal;
 }
 
-function devicesTab({ devices, release, media, stats, thresholds }) {
+function devicesTab({ devices, release, media, stats, thresholds, builtinManual }) {
+  // 모달은 표 밖에 모아 둔다. 셀 안에 두면 td 의 text-align:right / white-space:nowrap 이
+  // 상속돼 모달 글이 우측정렬되고 가로 스크롤이 생긴다.
+  const modals = [];
   const rows = devices.map(d => {
+    modals.push(deviceModals(d, media, builtinManual || []));
     const age = Date.now() - d.last_seen;
     // 태블릿은 화면이 꺼지면 절전으로 체크인이 늦어진다 — 그건 고장이 아니다. 그래서
     // "오프라인" 대신 마지막 접속 시각을 헤드라인으로 두고, 24시간 넘은 것만 빨강으로 센다.
@@ -441,17 +478,16 @@ function devicesTab({ devices, release, media, stats, thresholds }) {
       </td>
       <td class="nowrap">
         <div class="stack">
-          <span class="mono">영상 ${vids.length} · 안내 ${manual.length ? manual.length + '장' : '내장'}</span>
+          <span class="mono">영상 ${vids.length} · 이미지 ${manual.length ? manual.length + '장' : '내장'}</span>
           ${waiting ? `<span class="chip warn">대기 ${waiting}</span>` : '<span class="mono">&nbsp;</span>'}
         </div>
       </td>
       <td class="right nowrap">
         <div class="row" style="justify-content:flex-end;gap:6px;">
-          <button class="btn ghost sm" type="button" onclick="document.getElementById('vid-${esc(d.device_id)}').showModal()">영상</button>
-          <button class="btn ghost sm" type="button" onclick="document.getElementById('man-${esc(d.device_id)}').showModal()">이용안내</button>
-          <button class="btn ghost sm" type="button" onclick="document.getElementById('mng-${esc(d.device_id)}').showModal()">설정</button>
+          <button class="btn ghost sm" type="button" onclick="openModal('vid-${esc(d.device_id)}')">영상</button>
+          <button class="btn ghost sm" type="button" onclick="openModal('man-${esc(d.device_id)}')">이미지</button>
+          <button class="btn ghost sm" type="button" onclick="openModal('mng-${esc(d.device_id)}')">설정</button>
         </div>
-        ${deviceModals(d, media)}
       </td>
     </tr>`;
   }).join('');
@@ -478,7 +514,8 @@ function devicesTab({ devices, release, media, stats, thresholds }) {
         태블릿은 사용 중일 때 30분마다 접속합니다. 화면이 꺼져 있으면 1~2시간까지 늦어지고 밤에는 아침까지 끊기는 것이 정상입니다 —
         <b>“미접속”은 고장이 아니라 쉬고 있다는 뜻</b>입니다. 24시간 넘게 소식이 없을 때만 확인이 필요합니다.
       </div>
-    </div>`;
+    </div>
+    ${modals.join('')}`;
 }
 
 // ─────────────────────────────────────────────────────────────
