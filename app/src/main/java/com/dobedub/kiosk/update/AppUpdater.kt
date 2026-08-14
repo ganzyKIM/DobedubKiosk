@@ -390,6 +390,10 @@ class AppUpdater(private val context: Context) {
                 if (dest.exists() && dest.length() == item.optLong("size", -1)) continue
                 try {
                     downloadSmallFile(url, dest)
+                    // 화면이 열려 있어도 새 썸네일이 바로 보이게 epoch 를 올린다 — 목록
+                    // 화면이 이를 구독해 재구성되고, VideoCard 가 파일 서명 변화를 보고
+                    // 다시 읽는다. (update+finish 틱은 StateFlow conflation 에 삼켜졌다)
+                    DownloadState.noteThumbChanged()
                     Log.i(TAG, "썸네일 내려받음: $name")
                 } catch (e: Exception) {
                     Log.w(TAG, "썸네일 다운로드 실패($name): ${e.message}")

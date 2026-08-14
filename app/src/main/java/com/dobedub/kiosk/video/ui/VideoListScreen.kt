@@ -65,6 +65,8 @@ fun VideoListScreen(
     // 관리자가 원격으로 보내는 중인 영상 — 다 받은 것과 똑같은 카드 자리에 진행률을 띄워
     // "지금 오고 있다"는 걸 보여준다. 완료되면 DownloadState 에서 빠지고 목록에 실물이 뜬다.
     val transfers by DownloadState.transfers.collectAsState()
+    // 썸네일 교체 신호. 값이 바뀌면 화면이 재구성되고, 각 카드가 파일 서명 변화를 읽는다.
+    val thumbEpoch by DownloadState.thumbEpoch.collectAsState()
     val incoming = transfers.values
         .filter { it.kind == "video" }
         .sortedBy { it.name }
@@ -94,7 +96,9 @@ fun VideoListScreen(
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(videos) { video ->
-                    VideoCard(video = video, onClick = { onOpenVideo(video) })
+                    // thumbEpoch 를 파라미터로 넘겨야 값이 바뀔 때 이 카드가 재구성된다 —
+                    // 같은 VideoItem 이면 Compose 가 재구성을 건너뛰기 때문.
+                    VideoCard(video = video, thumbEpoch = thumbEpoch, onClick = { onOpenVideo(video) })
                 }
                 items(incoming, key = { "incoming-${it.name}" }) { transfer ->
                     IncomingVideoCard(transfer)
@@ -150,10 +154,17 @@ private fun IncomingVideoCard(transfer: DownloadState.Transfer) {
 }
 
 @Composable
-private fun VideoCard(video: VideoItem, onClick: () -> Unit) {
-    var thumbnail by remember(video.file.path) { mutableStateOf<Bitmap?>(null) }
+private fun VideoCard(video: VideoItem, thumbEpoch: Int = 0, onClick: () -> Unit) {
+    // 커스텀 썸네일 파일의 서명(크기·수정시각)을 키에 포함한다. 예전엔 영상 경로로만 키를
+    // 잡아서, 백오피스가 썸네일을 교체해 파일이 바뀌어도 화면이 열려 있는 동안엔 옛
+    // 비트맵(흰 첫 프레임 등)이 그대로 남았다. AppUpdater 가 썸네일을 받으면 DownloadState
+    // 를 틱해 재구성이 일어나고, 그때 이 서명이 달라져 있으면 다시 읽는다.
+    val thumbSig = remember(video.file.path) {
+        java.io.File(video.file.parentFile, "${video.file.name}.jpg")
+    }.let { f -> if (f.exists()) "${f.length()}:${f.lastModified()}" else "none" }
+    var thumbnail by remember(video.file.path, thumbSig) { mutableStateOf<Bitmap?>(null) }
 
-    LaunchedEffect(video.file.path) {
+    LaunchedEffect(video.file.path, thumbSig) {
         thumbnail = VideoThumbnailLoader.load(video.file)
     }
 

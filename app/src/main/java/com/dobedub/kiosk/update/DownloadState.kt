@@ -29,4 +29,14 @@ object DownloadState {
     fun finish(kind: String, name: String) {
         _transfers.value = _transfers.value - "$kind|$name"
     }
+
+    /**
+     * 썸네일 파일이 바뀌었음을 알리는 단조 증가 카운터.
+     * transfers 맵에 넣었다 빼는 방식은 안 된다 — StateFlow 는 값을 합치고(conflation)
+     * 최종 값이 이전과 같으면(맵 +x -x = 원래 맵) 방출 자체를 생략해서, 순간적인 변경은
+     * 구독자에게 전달되지 않는다(실기기에서 확인). 정수 증가는 항상 새 값이라 반드시 방출된다.
+     */
+    private val _thumbEpoch = MutableStateFlow(0)
+    val thumbEpoch: StateFlow<Int> = _thumbEpoch
+    fun noteThumbChanged() { _thumbEpoch.value++ }
 }
