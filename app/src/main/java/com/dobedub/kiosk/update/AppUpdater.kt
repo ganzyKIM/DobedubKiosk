@@ -16,12 +16,16 @@ import com.dobedub.kiosk.data.KioskSettings
 import com.dobedub.kiosk.data.KioskSettingsRepository
 import com.dobedub.kiosk.manual.ManualRepository
 import com.dobedub.kiosk.video.VideoRepository
+import android.os.SystemClock
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.security.MessageDigest
 
 /**
@@ -47,8 +51,15 @@ class AppUpdater(private val context: Context) {
         val sha256: String = "",
         val size: Long = 0,
         /** 관리자가 이 기기에 "업데이트 하시겠어요?" 확인창을 요청했는지(백오피스 강제 알림). */
-        val promptUpdate: Boolean = false
+        val promptUpdate: Boolean = false,
+        /** 관리자의 명시적 "즉시 업데이트" — 사용(재생) 중이어도 바로 설치한다. promptUpdate 보다 우선. */
+        val forceUpdate: Boolean = false,
+        /** "기기에서 물어보고 받기"로 온 영상들 — 화면에서 동의를 받은 뒤에만 내려받는다. */
+        val askVideos: List<PendingVideo> = emptyList()
     )
+
+    /** 백오피스가 배포 지시한 영상 하나. */
+    data class PendingVideo(val name: String, val url: String, val sha256: String, val size: Long)
 
     sealed class Result {
         data class UpToDate(val serverVersion: Int) : Result()
@@ -60,12 +71,22 @@ class AppUpdater(private val context: Context) {
         object NoServer : Result()
     }
 
+    private suspend fun baseUrlOrNull(): String? {
+        val s = settings.currentSettings()
+        return s.fleetServerUrl.ifBlank { BuildConfig.FLEET_SERVER_URL }.trimEnd('/').ifBlank { null }
+    }
+
     /**
      * 체크인 + 필요 시 업데이트까지 한 번 수행. UI/스케줄러에서 호출.
      * @param canInstallNow 새 버전을 지금 설치해도 되는지(예: 홈 화면 유휴 상태). false면 설치를 다음 주기로 미룬다.
      *                      수동(관리자 버튼) 실행 시엔 항상 true를 넘긴다.
+     * @param onVideosAwaitingConsent "물어보고 받기"로 온 영상이 있을 때 호출 — 호출부가 화면에
+     *                      확인창을 띄우고, 동의하면 downloadVideosConfirmed() 를 부른다.
      */
-    suspend fun runOnce(canInstallNow: () -> Boolean = { true }): Result = withContext(Dispatchers.IO) {
+    suspend fun runOnce(
+        canInstallNow: () -> Boolean = { true },
+        onVideosAwaitingConsent: (List<PendingVideo>) -> Unit = {}
+    ): Result = withContext(Dispatchers.IO) {
         val s = settings.currentSettings()
         val baseUrl = s.fleetServerUrl.ifBlank { BuildConfig.FLEET_SERVER_URL }.trimEnd('/')
         if (baseUrl.isBlank()) return@withContext Result.NoServer
@@ -77,8 +98,17 @@ class AppUpdater(private val context: Context) {
             return@withContext Result.Failed("서버 접속 실패: ${e.message}")
         }
 
+        if (manifest.askVideos.isNotEmpty()) onVideosAwaitingConsent(manifest.askVideos)
+
         if (!manifest.update || manifest.versionCode <= BuildConfig.VERSION_CODE) {
             return@withContext Result.UpToDate(manifest.versionCode)
+        }
+
+        // 관리자의 명시적 "즉시 업데이트" — 사용 중 보호(canInstallNow)와 확인창(promptUpdate)
+        // 둘 다 건너뛴다. 재생을 끊는다는 사실을 대시보드 confirm 에서 이미 고지받고 눌렀다.
+        if (manifest.forceUpdate) {
+            Log.i(TAG, "관리자 강제 지시로 즉시 설치 — code ${manifest.versionCode}")
+            return@withContext performInstall(manifest, baseUrl)
         }
 
         if (!canInstallNow()) {
@@ -94,26 +124,82 @@ class AppUpdater(private val context: Context) {
         }
 
         Log.i(TAG, "새 버전 발견: code ${manifest.versionCode} (현재 ${BuildConfig.VERSION_CODE})")
-        return@withContext performInstall(manifest)
+        return@withContext performInstall(manifest, baseUrl)
     }
 
     /** 확인창에서 사용자가 "지금 업데이트"를 눌렀을 때 호출 — 이미 받아둔 manifest로 바로 설치를 진행한다. */
     suspend fun installConfirmed(manifest: Manifest): Result = withContext(Dispatchers.IO) {
-        performInstall(manifest)
+        performInstall(manifest, baseUrlOrNull() ?: return@withContext Result.NoServer)
     }
 
-    private fun performInstall(manifest: Manifest): Result = try {
-        val apk = downloadApk(manifest)
+    /** "물어보고 받기" 확인창에서 동의했을 때 호출 — 해당 영상들을 바로 내려받는다. */
+    suspend fun downloadVideosConfirmed(videos: List<PendingVideo>): Unit = withContext(Dispatchers.IO) {
+        val base = baseUrlOrNull() ?: return@withContext
+        for (v in videos) {
+            try {
+                downloadVideo(base, v)
+            } catch (e: Exception) {
+                Log.w(TAG, "영상 다운로드 실패(${v.name}): ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * 다음 체크인까지 대기. 단순 delay 가 아니라 서버 long-poll(/api/poke)에 매달려 있어서,
+     * 관리자가 "지금 바로" 지시(영상 push·즉시 업데이트)를 내리면 몇 초 안에 깨어나
+     * 즉시 체크인하게 된다. 지시 내용 자체는 여전히 체크인 응답으로만 받는다.
+     * 구서버(404)나 네트워크 오류면 남은 시간만큼 그냥 잔다 — 기존 주기로 자연 폴백.
+     */
+    suspend fun waitForWake(maxWaitMs: Long): Unit = withContext(Dispatchers.IO) {
+        val base = baseUrlOrNull()
+        if (base == null) { delay(maxWaitMs); return@withContext }
+        val deadline = SystemClock.elapsedRealtime() + maxWaitMs
+        while (true) {
+            val remain = deadline - SystemClock.elapsedRealtime()
+            if (remain <= 0) return@withContext
+            try {
+                val id = URLEncoder.encode(deviceId(), "UTF-8")
+                val conn = (URL("$base/api/poke?deviceId=$id").openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 10000
+                    readTimeout = 65000   // 서버가 최대 50초 붙잡는다 — 그보다 넉넉히
+                    if (DEVICE_TOKEN.isNotBlank()) setRequestProperty("X-Kiosk-Token", DEVICE_TOKEN)
+                }
+                val code = conn.responseCode
+                if (code == 404) {   // 구버전 서버 — long-poll 없음
+                    conn.disconnect()
+                    delay(remain)
+                    return@withContext
+                }
+                val body = conn.inputStream.bufferedReader().use { it.readText() }
+                conn.disconnect()
+                if (JSONObject(body).optBoolean("checkinNow", false)) {
+                    Log.i(TAG, "서버가 즉시 체크인 요청 — 깨어남")
+                    return@withContext
+                }
+            } catch (e: Exception) {
+                // 네트워크 오류/일시 단절 — 잠깐 쉬고 재시도. 남은 시간이 다 되면 정규 체크인.
+                delay(minOf(30_000L, remain))
+            }
+        }
+    }
+
+    private fun performInstall(manifest: Manifest, baseUrl: String): Result = try {
+        val apk = downloadApk(manifest, baseUrl)
         if (!verifySha256(apk, manifest.sha256)) {
             apk.delete()
+            reportProgress(baseUrl, "apk", "v${manifest.versionName}", 0, manifest.size, "failed", "체크섬 불일치")
             Result.Failed("APK 체크섬 불일치 — 설치 중단")
         } else {
+            reportProgress(baseUrl, "apk", "v${manifest.versionName}", manifest.size, manifest.size, "done", null)
             installApk(apk)
             Result.Updating(manifest.versionCode)
         }
     } catch (e: Exception) {
         Log.e(TAG, "업데이트 실패", e)
+        reportProgress(baseUrl, "apk", "v${manifest.versionName}", 0, manifest.size, "failed", e.message)
         Result.Failed("업데이트 실패: ${e.message}")
+    } finally {
+        DownloadState.finish("apk", "v${manifest.versionName}")
     }
 
     private suspend fun checkIn(baseUrl: String, s: KioskSettings): Manifest {
@@ -204,17 +290,29 @@ class AppUpdater(private val context: Context) {
         // 백오피스가 지시한 영상 배포(다운로드) 실행. 파일 하나가 실패해도 나머지와
         // 이어지는 버전 체크에 영향 없도록 항목별로 예외를 흡수한다 — 영상은 크기가
         // 커서(수 GB) 실패 확률이 APK보다 높다.
+        // ask=true("물어보고 받기")인 항목은 여기서 받지 않고 모아서 돌려준다 — 호출부가
+        // 화면에 확인창을 띄우고, 동의하면 downloadVideosConfirmed()로 내려받는다.
         val toPush = json.optJSONArray("pushVideos")
+        val askVideos = mutableListOf<PendingVideo>()
         if (toPush != null) {
             for (i in 0 until toPush.length()) {
                 val item = toPush.optJSONObject(i) ?: continue
-                val name = item.optString("name", "")
-                val url = item.optString("url", "")
-                if (name.isBlank() || url.isBlank()) continue
-                try {
-                    downloadVideo(url, name, item.optString("sha256", ""))
-                } catch (e: Exception) {
-                    Log.w(TAG, "영상 다운로드 실패($name): ${e.message}")
+                val v = PendingVideo(
+                    name = item.optString("name", ""),
+                    url = item.optString("url", ""),
+                    sha256 = item.optString("sha256", ""),
+                    size = item.optLong("size", 0)
+                )
+                if (v.name.isBlank() || v.url.isBlank()) continue
+                if (item.optBoolean("ask", false)) {
+                    // 이미 보유 중이면 물어볼 것도 없다(서버가 다음 체크인에 확정 처리한다).
+                    if (videoRepo.inventory().none { it.first == v.name }) askVideos += v
+                } else {
+                    try {
+                        downloadVideo(baseUrl, v)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "영상 다운로드 실패(${v.name}): ${e.message}")
+                    }
                 }
             }
         }
@@ -273,7 +371,9 @@ class AppUpdater(private val context: Context) {
             apkUrl = json.optString("apkUrl", ""),
             sha256 = json.optString("sha256", ""),
             size = json.optLong("size", 0),
-            promptUpdate = json.optBoolean("promptUpdate", false)
+            promptUpdate = json.optBoolean("promptUpdate", false),
+            forceUpdate = json.optBoolean("forceUpdate", false),
+            askVideos = askVideos
         )
     }
 
@@ -298,37 +398,46 @@ class AppUpdater(private val context: Context) {
     }
 
     /** 이미 보유 중이면(=백오피스가 아직 확정 처리 전 재전송한 경우 등) 다시 받지 않는다. */
-    private fun downloadVideo(url: String, name: String, expectedSha256: String) {
-        if (videoRepo.inventory().any { it.first == name }) return
+    private fun downloadVideo(baseUrl: String, v: PendingVideo) {
+        if (videoRepo.inventory().any { it.first == v.name }) return
 
-        val partial = videoRepo.beginVideoDownload(name) ?: return
+        val partial = videoRepo.beginVideoDownload(v.name) ?: return
         if (partial.exists()) partial.delete()
 
-        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 15000
-            readTimeout = 60000
-            if (DEVICE_TOKEN.isNotBlank()) setRequestProperty("X-Kiosk-Token", DEVICE_TOKEN)
-        }
         try {
-            val code = conn.responseCode
-            if (code !in 200..299) throw RuntimeException("영상 다운로드 HTTP $code")
-            conn.inputStream.use { input -> partial.outputStream().use { input.copyTo(it) } }
-        } finally {
-            conn.disconnect()
-        }
+            val conn = (URL(v.url).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 15000
+                readTimeout = 60000
+                if (DEVICE_TOKEN.isNotBlank()) setRequestProperty("X-Kiosk-Token", DEVICE_TOKEN)
+            }
+            try {
+                val code = conn.responseCode
+                if (code !in 200..299) throw RuntimeException("영상 다운로드 HTTP $code")
+                val total = if (v.size > 0) v.size else conn.contentLengthLong
+                copyWithProgress(conn.inputStream, partial, "video", v.name, total, baseUrl)
+            } finally {
+                conn.disconnect()
+            }
 
-        if (expectedSha256.isNotBlank() && !verifySha256(partial, expectedSha256)) {
-            partial.delete()
-            throw RuntimeException("영상 체크섬 불일치: $name")
+            if (v.sha256.isNotBlank() && !verifySha256(partial, v.sha256)) {
+                partial.delete()
+                throw RuntimeException("영상 체크섬 불일치: ${v.name}")
+            }
+            if (!videoRepo.commitVideoDownload(partial, v.name)) {
+                partial.delete()
+                throw RuntimeException("영상 저장 실패: ${v.name}")
+            }
+            reportProgress(baseUrl, "video", v.name, v.size, v.size, "done", null)
+            Log.i(TAG, "영상 다운로드 완료: ${v.name}")
+        } catch (e: Exception) {
+            reportProgress(baseUrl, "video", v.name, 0, v.size, "failed", e.message)
+            throw e
+        } finally {
+            DownloadState.finish("video", v.name)
         }
-        if (!videoRepo.commitVideoDownload(partial, name)) {
-            partial.delete()
-            throw RuntimeException("영상 저장 실패: $name")
-        }
-        Log.i(TAG, "영상 다운로드 완료: $name")
     }
 
-    private fun downloadApk(manifest: Manifest): File {
+    private fun downloadApk(manifest: Manifest, baseUrl: String): File {
         val url = manifest.apkUrl
         val out = File(context.cacheDir, "update-${manifest.versionCode}.apk")
         if (out.exists()) out.delete()
@@ -338,12 +447,81 @@ class AppUpdater(private val context: Context) {
             readTimeout = 60000
             if (DEVICE_TOKEN.isNotBlank()) setRequestProperty("X-Kiosk-Token", DEVICE_TOKEN)
         }
-        val code = conn.responseCode
-        if (code !in 200..299) { conn.disconnect(); throw RuntimeException("APK 다운로드 HTTP $code") }
-        conn.inputStream.use { input -> out.outputStream().use { input.copyTo(it) } }
-        conn.disconnect()
+        try {
+            val code = conn.responseCode
+            if (code !in 200..299) throw RuntimeException("APK 다운로드 HTTP $code")
+            val total = if (manifest.size > 0) manifest.size else conn.contentLengthLong
+            copyWithProgress(conn.inputStream, out, "apk", "v${manifest.versionName}", total, baseUrl)
+        } finally {
+            conn.disconnect()
+        }
         Log.i(TAG, "APK 다운로드 완료: ${out.length()} bytes")
         return out
+    }
+
+    /**
+     * 스트림을 복사하면서 진행률을 DownloadState(기기 화면)와 서버(/api/progress, 대시보드)에
+     * 보고한다. 보고는 1.5초 또는 5%p 마다 — 매 버퍼마다 보내면 다운로드 자체가 느려진다.
+     * 서버 보고 실패는 무시한다(어차피 다운로드가 그 서버에서 오고 있다).
+     */
+    private fun copyWithProgress(
+        input: InputStream, dest: File,
+        kind: String, name: String, total: Long, baseUrl: String
+    ) {
+        val buf = ByteArray(64 * 1024)
+        var received = 0L
+        var lastAt = 0L
+        var lastPct = -1
+        DownloadState.update(kind, name, 0, total)
+        input.use { src ->
+            dest.outputStream().use { out ->
+                while (true) {
+                    val n = src.read(buf)
+                    if (n < 0) break
+                    out.write(buf, 0, n)
+                    received += n
+                    val now = SystemClock.elapsedRealtime()
+                    val pct = if (total > 0) (received * 100 / total).toInt() else -1
+                    if (now - lastAt >= 1500 || (pct >= 0 && pct >= lastPct + 5)) {
+                        lastAt = now
+                        lastPct = pct
+                        DownloadState.update(kind, name, received, total)
+                        reportProgress(baseUrl, kind, name, received, total, "downloading", null)
+                    }
+                }
+            }
+        }
+    }
+
+    /** 다운로드 진행률을 서버에 알린다(대시보드 표시용). 실패해도 다운로드에는 영향 없음. */
+    private fun reportProgress(
+        baseUrl: String, kind: String, name: String,
+        received: Long, total: Long, status: String, error: String?
+    ) {
+        try {
+            val conn = (URL("$baseUrl/api/progress").openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 3000
+                readTimeout = 3000
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json")
+                if (DEVICE_TOKEN.isNotBlank()) setRequestProperty("X-Kiosk-Token", DEVICE_TOKEN)
+            }
+            val payload = JSONObject().apply {
+                put("deviceId", deviceId())
+                put("kind", kind)
+                put("name", name)
+                put("received", received)
+                put("total", total)
+                put("status", status)
+                if (error != null) put("error", error.take(200))
+            }
+            conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+            conn.inputStream.use { it.readBytes() }
+            conn.disconnect()
+        } catch (e: Exception) {
+            // 진행률 보고는 부가 기능 — 조용히 넘어간다
+        }
     }
 
     private fun verifySha256(file: File, expected: String): Boolean {

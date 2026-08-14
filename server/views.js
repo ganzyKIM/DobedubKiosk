@@ -196,7 +196,59 @@ function openModal(id){
     i.src=i.getAttribute('data-src'); i.removeAttribute('data-src');
   });
   d.showModal();
-}`;
+}
+
+// ── 전송 진행률 폴링 ──
+// 기기가 다운로드 중 /api/progress 로 보고한 것을 2초마다 읽어 화면에 그린다.
+// .xfer        : 특정 파일 하나의 상태 칩(모달 "받는 중" 항목, 버전 셀 APK 칩)
+// .xfer-sum    : 기기 행의 요약 칩("수신중 2개 41%")
+(function(){
+  function pct(t){ return t.total > 0 ? Math.floor(t.received / t.total * 100) + '%' : '…'; }
+  function apply(list){
+    document.querySelectorAll('.xfer').forEach(function(el){
+      var t = list.find(function(x){
+        return x.deviceId === el.dataset.xferDevice && x.kind === el.dataset.xferKind
+            && (!el.dataset.xferName || x.name === el.dataset.xferName);
+      });
+      if (!t) {
+        // APK 칩은 평소 숨김. 모달 "받는 중" 칩은 서버가 준 초기 문구를 유지한다.
+        if (el.dataset.xferKind === 'apk') el.hidden = true;
+        return;
+      }
+      el.hidden = false;
+      el.className = 'chip ' + (t.status === 'failed' ? 'bad' : t.status === 'done' ? 'ok' : 'warn') + ' xfer';
+      el.textContent =
+        t.status === 'failed' ? '실패' + (t.error ? ': ' + t.error : '') :
+        t.status === 'done' ? (el.dataset.xferKind === 'apk' ? '설치 중' : '완료 — 새로고침하면 반영') :
+        (el.dataset.xferKind === 'apk' ? 'APK ' : '수신 중 ') + pct(t);
+    });
+    document.querySelectorAll('.xfer-sum').forEach(function(el){
+      var mine = list.filter(function(x){
+        return x.deviceId === el.dataset.xferDevice && x.kind === 'video' && x.status === 'downloading';
+      });
+      if (!mine.length) { el.hidden = true; return; }
+      var rec = 0, tot = 0;
+      mine.forEach(function(t){ rec += t.received; tot += t.total; });
+      el.hidden = false;
+      el.textContent = '수신중 ' + mine.length + '개 ' + (tot > 0 ? Math.floor(rec / tot * 100) + '%' : '…');
+    });
+  }
+  var failStreak = 0;
+  async function poll(){
+    if (document.visibilityState !== 'visible') return;
+    try {
+      var r = await fetch('/api/transfers', { cache: 'no-store' });
+      if (!r.ok) { failStreak++; return; }
+      failStreak = 0;
+      apply(await r.json());
+    } catch (e) { failStreak++; }
+  }
+  // 로그인 페이지 등 대상 요소가 없으면 폴링하지 않는다.
+  if (document.querySelector('.xfer, .xfer-sum')) {
+    poll();
+    setInterval(function(){ if (failStreak < 30) poll(); }, 2000);
+  }
+})();`;
 
 function page(title, body) {
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8">
@@ -249,7 +301,8 @@ function deviceModals(d, media, builtin) {
   const incoming = pendingPush.map(p => `<div class="item">
       <span class="name">${esc(p.original_name)}</span>
       <span class="mono nowrap">${fmtBytes(p.size)}</span>
-      <span class="chip warn">전송 대기</span>
+      <span class="chip warn xfer" data-xfer-device="${esc(d.device_id)}" data-xfer-kind="video"
+        data-xfer-name="${esc(p.original_name)}">${p.mode === 'ask' ? '기기 확인 대기' : '전송 대기'}</span>
       <form class="inline" method="post" action="/media/push/cancel">
         <input type="hidden" name="deviceId" value="${esc(d.device_id)}">
         <input type="hidden" name="mediaId" value="${p.media_id}">
@@ -270,25 +323,36 @@ function deviceModals(d, media, builtin) {
       </label>`;
   }).join('');
 
+  // ⚠ 취소/삭제 폼을 push 폼 **안에** 두면 안 된다. HTML 은 중첩 <form> 을 허용하지 않아
+  // 브라우저가 안쪽 <form> 태그를 파싱 단계에서 버리고, 그 버튼들이 바깥 push 폼의
+  // submit 이 된다 — 실제로 "취소"를 누르면 push 폼의 onsubmit 검사에 걸려
+  // "보낼 영상을 선택하세요" 알림만 뜨고 취소가 안 됐다. 그래서 push 폼은 선택 목록만
+  // 감싸고, 푸터의 보내기 버튼은 form 속성으로 원격 연결한다.
+  const pushFormId = `push-${esc(d.device_id)}`;
   const videoModal = `<dialog id="vid-${esc(d.device_id)}">
       <div class="m-h"><h3>영상 관리</h3><div class="who">${who}</div></div>
-      <form method="post" action="/media/push"
+      <div class="m-b">
+        ${incoming ? `<div class="m-sec"><h4>받는 중</h4><div class="list">${incoming}</div>
+          <p class="muted small">취소는 아직 다운로드가 시작되지 않은 항목에만 듣습니다. 이미 받는 중인 영상은 끝까지 받아지며, 필요하면 완료 후 삭제하세요.</p></div>` : ''}
+        <div class="m-sec"><h4>이 태블릿의 영상 ${vids.length}개</h4><div class="list">${owned}</div></div>
+        ${media.length ? `<form id="${pushFormId}" method="post" action="/media/push"
             onsubmit="return this.querySelector('input[name=mediaId]:checked') ? true : (alert('보낼 영상을 선택하세요.'), false)">
-        <input type="hidden" name="deviceId" value="${esc(d.device_id)}">
-        <div class="m-b">
-          ${incoming ? `<div class="m-sec"><h4>받는 중</h4><div class="list">${incoming}</div></div>` : ''}
-          <div class="m-sec"><h4>이 태블릿의 영상 ${vids.length}개</h4><div class="list">${owned}</div></div>
-          ${media.length ? `<div class="m-sec">
+          <input type="hidden" name="deviceId" value="${esc(d.device_id)}">
+          <div class="m-sec">
             <h4>보낼 영상 고르기</h4>
-            <p>선택한 영상을 다음 접속 때 기기가 내려받습니다. 이미 있거나 보내는 중인 것은 고를 수 없습니다.</p>
+            <p>접속 중인 기기는 보내면 몇 초 안에 받기 시작합니다. 꺼져 있으면 다음 접속 때 받습니다.</p>
             <div class="list">${picks}</div>
-          </div>` : '<div class="m-sec"><p>자료실에 영상이 없습니다. 영상 자료실 탭에서 먼저 등록하세요.</p></div>'}
-        </div>
-        <div class="m-f">
-          <button class="btn ghost" type="button" onclick="this.closest('dialog').close()">닫기</button>
-          ${media.length ? '<button class="btn" type="submit">선택한 영상 보내기</button>' : ''}
-        </div>
-      </form>
+            <div class="row" style="gap:16px;margin-top:10px;flex-wrap:wrap;">
+              <label class="row" style="gap:6px;"><input type="radio" name="mode" value="force" checked> 바로 받기 시작</label>
+              <label class="row" style="gap:6px;"><input type="radio" name="mode" value="ask"> 기기 화면에서 물어보고 받기</label>
+            </div>
+          </div>
+        </form>` : '<div class="m-sec"><p>자료실에 영상이 없습니다. 영상 자료실 탭에서 먼저 등록하세요.</p></div>'}
+      </div>
+      <div class="m-f">
+        <button class="btn ghost" type="button" onclick="this.closest('dialog').close()">닫기</button>
+        ${media.length ? `<button class="btn" type="submit" form="${pushFormId}">선택한 영상 보내기</button>` : ''}
+      </div>
     </dialog>`;
 
   // ── 이용안내 ──
@@ -432,12 +496,25 @@ function devicesTab({ devices, release, media, stats, thresholds, builtinManual 
              : { k: 'bad', t: '연락 두절', c: 'var(--bad)' };
 
     const isLatest = release && d.version_code === release.version_code;
+    // 구버전 기기에는 두 가지 선택지: "알림 보내기"(기기 화면에서 동의 후 설치)와
+    // "즉시 업데이트"(재생 중이어도 바로 설치 — 관리자 명시 선택이라 confirm 을 거친다).
     const verChip = !release ? ''
       : isLatest ? '<span class="chip ok">최신</span>'
-      : d.update_prompt ? '<span class="chip warn">알림 대기중</span>'
+      : d.force_update ? '<span class="chip warn">즉시 업데이트 대기중</span>'
+      : d.update_prompt ? `<span class="chip warn">알림 대기중</span>
+          <form class="inline" method="post" action="/device/update-force"
+                onsubmit="return confirm('이 기기를 지금 바로 업데이트할까요?\\n사용(재생) 중이어도 즉시 설치되고 앱이 잠시 재시작됩니다.');">
+            <input type="hidden" name="deviceId" value="${esc(d.device_id)}">
+            <button class="btn ghost sm" type="submit">즉시</button>
+          </form>`
       : `<form class="inline" method="post" action="/device/update-prompt">
            <input type="hidden" name="deviceId" value="${esc(d.device_id)}">
            <button class="btn ghost sm" type="submit">알림 보내기</button>
+         </form>
+         <form class="inline" method="post" action="/device/update-force"
+               onsubmit="return confirm('이 기기를 지금 바로 업데이트할까요?\\n사용(재생) 중이어도 즉시 설치되고 앱이 잠시 재시작됩니다.');">
+           <input type="hidden" name="deviceId" value="${esc(d.device_id)}">
+           <button class="btn ghost sm" type="submit">즉시</button>
          </form>`;
 
     const vids = Array.isArray(d.videoList) ? d.videoList : [];
@@ -466,8 +543,9 @@ function devicesTab({ devices, release, media, stats, thresholds, builtinManual 
       </td>
       <td>
         <div class="stack">
-          <span class="nowrap">${esc(d.version_name || '?')} <span class="mono">${d.version_code == null ? '' : 'code ' + d.version_code}</span></span>
-          <span>${verChip}</span>
+          <span class="nowrap">${esc(d.version_name || '?')} <span class="mono">${d.version_code == null ? '' : 'code ' + d.version_code}</span>
+            <span class="chip ok xfer" data-xfer-device="${esc(d.device_id)}" data-xfer-kind="apk" hidden></span></span>
+          <span class="row" style="gap:6px;flex-wrap:wrap;">${verChip}</span>
         </div>
       </td>
       <td class="nowrap">
@@ -479,7 +557,11 @@ function devicesTab({ devices, release, media, stats, thresholds, builtinManual 
       <td class="nowrap">
         <div class="stack">
           <span class="mono">영상 ${vids.length} · 이미지 ${manual.length ? manual.length + '장' : '내장'}</span>
-          ${waiting ? `<span class="chip warn">대기 ${waiting}</span>` : '<span class="mono">&nbsp;</span>'}
+          <span class="row" style="gap:6px;">
+            ${waiting ? `<span class="chip warn">대기 ${waiting}</span>` : ''}
+            <span class="chip ok xfer-sum" data-xfer-device="${esc(d.device_id)}" hidden></span>
+            ${waiting ? '' : '<span class="mono">&nbsp;</span>'}
+          </span>
         </div>
       </td>
       <td class="right nowrap">

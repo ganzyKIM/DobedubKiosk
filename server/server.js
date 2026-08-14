@@ -213,6 +213,88 @@ function manifestFor(req, deviceRow) {
   return resp;
 }
 
+// ---------- 즉시 지시 채널(long-poll) ----------
+//
+// 앱은 체크인 사이를 delay 대신 이 엔드포인트 long-poll 로 기다린다(서버가 최대
+// POKE_HOLD_MS 붙잡음). 관리자가 "지금 바로" 성격의 지시(영상 push, 즉시 업데이트 등)를
+// 내리면 wakeDevice() 가 대기 중인 연결에 checkinNow:true 를 응답하고, 앱은 곧바로
+// 체크인한다. **지시 자체는 여전히 체크인 응답으로만 내려간다** — 이 채널은 "깨우기"만
+// 하므로 응답 유실·구버전 앱(404 폴백)·오프라인 기기 모두 기존 경로로 자연 수렴한다.
+const POKE_HOLD_MS = 50 * 1000;
+const pokeWaiters = new Map();   // deviceId → { res, timer }
+
+function wakeDevice(deviceId) {
+  const w = pokeWaiters.get(deviceId);
+  if (!w) return;                // 대기 중 아님(오프라인이거나 체크인 처리 중) — 다음 체크인에 반영
+  pokeWaiters.delete(deviceId);
+  clearTimeout(w.timer);
+  try { w.res.json({ checkinNow: true }); } catch (e) { /* 이미 끊긴 연결 */ }
+}
+
+app.get('/api/poke', (req, res) => {
+  if (DEVICE_TOKEN && req.get('X-Kiosk-Token') !== DEVICE_TOKEN) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  const deviceId = String(req.query.deviceId || '').slice(0, 128);
+  if (!deviceId) return res.status(400).json({ error: 'deviceId required' });
+
+  // 같은 기기의 이전 대기가 남아 있으면(앱 재시작 등) 그쪽을 먼저 정리한다.
+  const prev = pokeWaiters.get(deviceId);
+  if (prev) {
+    clearTimeout(prev.timer);
+    try { prev.res.json({ checkinNow: false }); } catch (e) { /* */ }
+  }
+  const timer = setTimeout(() => {
+    pokeWaiters.delete(deviceId);
+    try { res.json({ checkinNow: false }); } catch (e) { /* */ }
+  }, POKE_HOLD_MS);
+  pokeWaiters.set(deviceId, { res, timer });
+  // 클라이언트가 먼저 끊으면(타임아웃·네트워크 전환) 대기 엔트리를 치워 메모리 누수 방지.
+  req.on('close', () => {
+    const w = pokeWaiters.get(deviceId);
+    if (w && w.res === res) { pokeWaiters.delete(deviceId); clearTimeout(w.timer); }
+  });
+});
+
+// ---------- 전송 진행률 ----------
+//
+// 기기가 다운로드 중 주기적으로 보고한다. 휘발성 상태라 메모리에만 둔다(서버 재시작 시
+// 사라져도 다음 보고가 다시 채운다). 대시보드는 /api/transfers 를 폴링해 퍼센티지를 그린다.
+const transfers = new Map();   // "deviceId|kind|name" → { …, at }
+
+app.post('/api/progress', (req, res) => {
+  if (DEVICE_TOKEN && req.get('X-Kiosk-Token') !== DEVICE_TOKEN) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  const b = req.body || {};
+  const deviceId = String(b.deviceId || '').slice(0, 128);
+  const kind = b.kind === 'apk' ? 'apk' : 'video';
+  const name = String(b.name || '').slice(0, 200);
+  const status = ['downloading', 'done', 'failed'].includes(b.status) ? b.status : 'downloading';
+  if (!deviceId || !name) return res.status(400).json({ error: 'deviceId/name required' });
+  transfers.set(`${deviceId}|${kind}|${name}`, {
+    deviceId, kind, name, status,
+    received: Number.isFinite(Number(b.received)) ? Number(b.received) : 0,
+    total: Number.isFinite(Number(b.total)) ? Number(b.total) : 0,
+    error: typeof b.error === 'string' ? b.error.slice(0, 200) : null,
+    at: Date.now()
+  });
+  res.json({ ok: true });
+});
+
+// 끝난 항목은 잠시 보여준 뒤 치우고, 보고가 끊긴 항목(앱 강제 종료 등)도 정리한다.
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, t] of transfers) {
+    const age = now - t.at;
+    if ((t.status !== 'downloading' && age > 60 * 1000) || age > 10 * 60 * 1000) transfers.delete(k);
+  }
+}, 30 * 1000).unref();
+
+app.get('/api/transfers', auth.requireAuth, (req, res) => {
+  res.json(Array.from(transfers.values()));
+});
+
 // ---------- 기기 API ----------
 
 // 체크인: 기기가 주기적으로 상태를 보고하고, 응답으로 최신 버전 매니페스트를 받는다.
@@ -269,8 +351,13 @@ app.post('/api/checkin', (req, res) => {
     name: p.original_name,
     url: `${base.replace(/\/$/, '')}/media/${p.media_id}/download`,
     sha256: p.sha256,
-    size: p.size
+    size: p.size,
+    // true 면 기기가 바로 받지 않고 화면에서 동의를 구한다. 구버전 앱은 이 필드를
+    // 모른 채 즉시 받는다(= 기존 동작) — 해로운 방향의 오동작은 아니다.
+    ask: p.mode === 'ask'
   }));
+  // 관리자의 명시적 "즉시 업데이트": 재생 중이어도 설치. promptUpdate 보다 우선한다.
+  if (deviceRow && deviceRow.force_update) resp.forceUpdate = true;
   // 기기가 보유했다고 방금 보고한 영상 중 썸네일이 등록된 것들. 기기는 없는 것만(또는
   // 크기가 달라진 것만) 내려받는다. 지금 push 로 내려가는 영상의 썸네일은 다음 체크인에
   // 인벤토리에 잡히면서 따라간다 — 경로를 하나로 유지하기 위한 의도적 지연.
@@ -508,7 +595,19 @@ app.post('/release/notify-outdated', auth.requireAuth, (req, res) => {
 
 // 기기 하나에만 확인창 지시를 건다.
 app.post('/device/update-prompt', auth.requireAuth, (req, res) => {
-  if (req.body.deviceId) store.requestUpdatePrompt(String(req.body.deviceId));
+  if (req.body.deviceId) {
+    store.requestUpdatePrompt(String(req.body.deviceId));
+    wakeDevice(String(req.body.deviceId));   // 접속 중이면 확인창이 몇 초 안에 뜬다
+  }
+  backToReferer(req, res);
+});
+
+// 즉시 업데이트(강제): 사용(재생) 중이어도 바로 설치. 관리자가 확인창을 거쳐 선택한다.
+app.post('/device/update-force', auth.requireAuth, (req, res) => {
+  if (req.body.deviceId) {
+    store.requestForceUpdate(String(req.body.deviceId));
+    wakeDevice(String(req.body.deviceId));
+  }
   backToReferer(req, res);
 });
 
@@ -636,7 +735,10 @@ app.post('/device/manual/copy', auth.requireAuth, (req, res) => {
 // 원격 영상 삭제 지시 큐잉(다음 체크인 때 기기가 삭제).
 app.post('/device/video/delete', auth.requireAuth, (req, res) => {
   const { deviceId, filename } = req.body;
-  if (deviceId && filename) store.queueVideoDelete(String(deviceId), String(filename));
+  if (deviceId && filename) {
+    store.queueVideoDelete(String(deviceId), String(filename));
+    wakeDevice(String(deviceId));
+  }
   backToReferer(req, res);
 });
 
@@ -673,11 +775,13 @@ app.post('/media/upload', auth.requireAuth, uploadVideo.single('video'), async (
 // 모달에서 체크박스로 여러 개를 고르므로 mediaId 는 1개(문자열)일 수도, 배열일 수도 있다.
 app.post('/media/push', auth.requireAuth, (req, res) => {
   const deviceId = String(req.body.deviceId || '');
+  const mode = req.body.mode === 'ask' ? 'ask' : 'force';
   const ids = [].concat(req.body.mediaId || [])
     .map(Number)
     .filter(id => store.getMedia(id));   // 자료실에서 지워진 id 가 섞여 와도 조용히 걸러낸다
   if (!deviceId || ids.length === 0) return res.status(400).send('잘못된 요청입니다.');
-  for (const id of ids) store.queueVideoPush(deviceId, id);
+  for (const id of ids) store.queueVideoPush(deviceId, id, mode);
+  wakeDevice(deviceId);   // 접속 중이면 몇 초 안에 받기 시작(또는 확인창 표시)
   backToReferer(req, res);
 });
 
@@ -728,6 +832,13 @@ function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`[두비덥 함대관리] ${signal} 수신 — 종료 중...`);
+  // long-poll 대기 연결을 먼저 놓아준다 — 붙잡은 채로는 server.close 가 최대 50초를
+  // 기다리다 강제 종료 타이머(10초)에 걸린다.
+  for (const [id, w] of pokeWaiters) {
+    clearTimeout(w.timer);
+    try { w.res.json({ checkinNow: false }); } catch (e) { /* */ }
+  }
+  pokeWaiters.clear();
   server.close(() => {
     try { store.db.close(); } catch (e) { console.error('db close 실패', e); }
     console.log('[두비덥 함대관리] 정상 종료');

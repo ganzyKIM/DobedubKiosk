@@ -59,6 +59,8 @@ class MainActivity : ComponentActivity() {
     // 관리자가 "업데이트 알림 보내기"를 요청한 기기에서만 채워진다 — 평소엔 조용히
     // 백그라운드로 자동 설치되고, 이 값이 있을 때만 화면에 확인창을 띄운다.
     private var pendingUpdateConfirmation by mutableStateOf<AppUpdater.Manifest?>(null)
+    // 관리자가 "기기 화면에서 물어보고 받기"로 보낸 영상들 — 동의해야 내려받는다.
+    private var pendingVideoConsent by mutableStateOf<List<AppUpdater.PendingVideo>?>(null)
     private val idleHandler = Handler(Looper.getMainLooper())
     @Volatile private var idleTimeoutMillis = DEFAULT_IDLE_TIMEOUT_MINUTES * 60_000L
     @Volatile private var volumeMaxPercent = DEFAULT_VOLUME_MAX_PERCENT
@@ -135,6 +137,31 @@ class MainActivity : ComponentActivity() {
                             },
                             dismissButton = {
                                 TextButton(onClick = { pendingUpdateConfirmation = null }) { Text("나중에") }
+                            }
+                        )
+                    }
+
+                    // 관리자가 "물어보고 받기"로 보낸 영상 — 동의해야 다운로드가 시작된다.
+                    // "나중에"를 누르면 대기열에 남아 다음 체크인(10분) 때 다시 물어본다.
+                    pendingVideoConsent?.let { videos ->
+                        AlertDialog(
+                            onDismissRequest = { pendingVideoConsent = null },
+                            title = { Text("새 영상이 도착했어요") },
+                            text = {
+                                val totalMb = videos.sumOf { it.size } / (1024 * 1024)
+                                Text(
+                                    "관리자가 영상 ${videos.size}개(${totalMb}MB)를 보냈어요. 지금 받을까요?\n\n" +
+                                        videos.joinToString("\n") { "· ${it.name}" }
+                                )
+                            },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    pendingVideoConsent = null
+                                    lifecycleScope.launch { updater.downloadVideosConfirmed(videos) }
+                                }) { Text("지금 받기") }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { pendingVideoConsent = null }) { Text("나중에") }
                             }
                         )
                     }
@@ -238,14 +265,21 @@ class MainActivity : ComponentActivity() {
             delay(UPDATE_INITIAL_DELAY_MS)
             while (true) {
                 try {
-                    val result = updater.runOnce(canInstallNow = { navController?.currentDestination?.route == Routes.HOME })
+                    val result = updater.runOnce(
+                        canInstallNow = { navController?.currentDestination?.route == Routes.HOME },
+                        // Compose 스냅샷 상태는 어느 스레드에서 써도 안전하다(IO 디스패처에서 호출됨).
+                        onVideosAwaitingConsent = { videos -> pendingVideoConsent = videos }
+                    )
                     if (result is AppUpdater.Result.NeedsConfirmation) {
                         pendingUpdateConfirmation = result.manifest
                     }
                 } catch (_: Exception) {
                     // 네트워크 오류 등은 다음 주기에 재시도
                 }
-                delay(AppUpdater.CHECKIN_INTERVAL_MS)
+                // 단순 delay 가 아니라 서버 long-poll 에 매달린 대기 — 관리자가 "지금 바로"
+                // 지시를 내리면 주기를 기다리지 않고 몇 초 안에 다음 체크인이 일어난다.
+                // 구서버/네트워크 오류면 내부에서 남은 시간만큼 자고 나온다(기존 동작과 동일).
+                updater.waitForWake(AppUpdater.CHECKIN_INTERVAL_MS)
             }
         }
     }
