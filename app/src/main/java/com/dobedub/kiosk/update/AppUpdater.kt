@@ -43,6 +43,9 @@ class AppUpdater(private val context: Context) {
     private val videoRepo = VideoRepository(context)
     private val manualRepo = ManualRepository(context)
 
+    /** 확인/설치/수신이 겹쳐 돌지 않게 하는 재진입 가드(연타·자동주기와 수동 버튼 충돌 방지). */
+    private val busy = java.util.concurrent.atomic.AtomicBoolean(false)
+
     data class Manifest(
         val update: Boolean,
         val versionCode: Int = 0,
@@ -87,6 +90,14 @@ class AppUpdater(private val context: Context) {
         canInstallNow: () -> Boolean = { true },
         onVideosAwaitingConsent: (List<PendingVideo>) -> Unit = {}
     ): Result = withContext(Dispatchers.IO) {
+        // 재진입 가드. 관리자 화면의 "업데이트 확인"을 연타하면(실사용에서 실제로 벌어졌다)
+        // 이전 시도가 아직 APK/영상을 받는 중에 새 시도가 같은 임시 파일을 지우고 다시 쓰기
+        // 시작해 서로를 망가뜨린다 — 체크섬 불일치로 전부 실패하는 악순환. 자동 주기 루프와
+        // 수동 버튼이 겹치는 경우도 같다. 한 번에 하나만 돌게 막는다.
+        if (!busy.compareAndSet(false, true)) {
+            return@withContext Result.Failed("이미 확인/설치가 진행 중입니다. 잠시만 기다려주세요.")
+        }
+        try {
         val s = settings.currentSettings()
         val baseUrl = s.fleetServerUrl.ifBlank { BuildConfig.FLEET_SERVER_URL }.trimEnd('/')
         if (baseUrl.isBlank()) return@withContext Result.NoServer
@@ -125,22 +136,44 @@ class AppUpdater(private val context: Context) {
 
         Log.i(TAG, "새 버전 발견: code ${manifest.versionCode} (현재 ${BuildConfig.VERSION_CODE})")
         return@withContext performInstall(manifest, baseUrl)
+        } finally {
+            busy.set(false)
+        }
     }
 
     /** 확인창에서 사용자가 "지금 업데이트"를 눌렀을 때 호출 — 이미 받아둔 manifest로 바로 설치를 진행한다. */
     suspend fun installConfirmed(manifest: Manifest): Result = withContext(Dispatchers.IO) {
-        performInstall(manifest, baseUrlOrNull() ?: return@withContext Result.NoServer)
+        if (!busy.compareAndSet(false, true)) {
+            return@withContext Result.Failed("이미 확인/설치가 진행 중입니다. 잠시만 기다려주세요.")
+        }
+        try {
+            performInstall(manifest, baseUrlOrNull() ?: return@withContext Result.NoServer)
+        } finally {
+            busy.set(false)
+        }
     }
 
     /** "물어보고 받기" 확인창에서 동의했을 때 호출 — 해당 영상들을 바로 내려받는다. */
     suspend fun downloadVideosConfirmed(videos: List<PendingVideo>): Unit = withContext(Dispatchers.IO) {
         val base = baseUrlOrNull() ?: return@withContext
-        for (v in videos) {
-            try {
-                downloadVideo(base, v)
-            } catch (e: Exception) {
-                Log.w(TAG, "영상 다운로드 실패(${v.name}): ${e.message}")
+        // 체크인(runOnce)과 겹치면 같은 영상을 두 시도가 동시에 받을 수 있다 — 재진입 가드가
+        // 풀릴 때까지 잠깐 기다렸다 진행한다(다운로드 자체는 항목별 중복 검사가 있다).
+        var waited = 0L
+        while (!busy.compareAndSet(false, true)) {
+            delay(500)
+            waited += 500
+            if (waited >= 60_000) { Log.w(TAG, "다른 작업이 오래 안 끝나 영상 수신을 포기"); return@withContext }
+        }
+        try {
+            for (v in videos) {
+                try {
+                    downloadVideo(base, v)
+                } catch (e: Exception) {
+                    Log.w(TAG, "영상 다운로드 실패(${v.name}): ${e.message}")
+                }
             }
+        } finally {
+            busy.set(false)
         }
     }
 
