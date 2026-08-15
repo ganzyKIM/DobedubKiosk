@@ -36,23 +36,48 @@ class KioskManager(private val context: Context) {
      *
      * 멱등: 이미 지정돼 있으면 다시 지정해도 무해. NetBird 미설치 기기(구형 세팅)에서는
      * 아무것도 하지 않는다.
+     *
+     * ⚠ **어떤 경로로 끝났는지 반드시 로그를 남긴다.** 처음 구현(v2.4.1)은 "설치 안 됨"과
+     * "Device Owner 아님"을 조용히 return 했는데, 실제로는 **매니페스트에 `<queries>` 가
+     * 없어 Android 11 패키지 가시성 필터가 넷버드를 숨긴 것**이라 getPackageInfo 가
+     * NameNotFoundException 을 던지고 있었다. 로그가 없어 "코드가 있으니 됐겠지"로
+     * 넘어갔고, 재부팅 QA 를 한 사이클 통째로 날렸다.
      */
     fun ensureAlwaysOnVpn() {
-        if (!isDeviceOwner()) return
+        if (!isDeviceOwner()) {
+            Log.i(TAG, "always-on VPN 건너뜀 — Device Owner 아님")
+            return
+        }
         try {
             context.packageManager.getPackageInfo(NETBIRD_PACKAGE, 0)
         } catch (e: Exception) {
-            return   // NetBird 미설치 — 지정할 수 없다
+            // 미설치일 수도, 매니페스트 <queries> 누락으로 안 보이는 것일 수도 있다.
+            Log.w(TAG, "always-on VPN 건너뜀 — 넷버드를 찾을 수 없음(미설치 또는 가시성): ${e.message}")
+            return
         }
         try {
-            if (dpm.getAlwaysOnVpnPackage(adminComponent) != NETBIRD_PACKAGE) {
+            val current = dpm.getAlwaysOnVpnPackage(adminComponent)
+            if (current != NETBIRD_PACKAGE) {
                 dpm.setAlwaysOnVpnPackage(adminComponent, NETBIRD_PACKAGE, /* lockdownEnabled= */ false)
-                Log.i(TAG, "NetBird 를 always-on VPN 으로 지정")
+                Log.i(TAG, "NetBird 를 always-on VPN 으로 지정 (이전: $current)")
+            } else {
+                Log.i(TAG, "always-on VPN 이미 지정됨")
             }
         } catch (e: Exception) {
             // 일부 기기/버전에서 UnsupportedOperationException 가능 — 원격 관리는 수동 연결로 폴백
             Log.w(TAG, "always-on VPN 지정 실패: ${e.message}")
         }
+    }
+
+    /**
+     * 지금 always-on VPN 이 실제로 지정돼 있는지. 체크인 payload 에 실어 백오피스에서
+     * 보이게 한다 — 이번 사고처럼 "지정된 줄 알았는데 아니었다"를 원격에서 알아채려면
+     * 기기가 사실을 보고하는 수밖에 없다(재부팅 후에야 드러나면 이미 늦다).
+     */
+    fun alwaysOnVpnPackage(): String? = try {
+        if (isDeviceOwner()) dpm.getAlwaysOnVpnPackage(adminComponent) else null
+    } catch (e: Exception) {
+        null
     }
 
     /** 홈 버튼/최근앱/전원 메뉴 등을 막고 이 앱만 실행되는 잠금 태스크 모드로 진입한다. */

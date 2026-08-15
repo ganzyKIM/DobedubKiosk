@@ -139,7 +139,10 @@ for (const stmt of [
   // 관리자가 지정한 함대 서버 주소(원격 이전용). 기기 보고값(fleet_url)과 다르면 지시 전송
   `ALTER TABLE devices ADD COLUMN fleet_url_override TEXT`,
   // 기기가 체크인마다 보고하는 "현재 쓰는" 함대 서버 주소(완료 판정 근거)
-  `ALTER TABLE devices ADD COLUMN fleet_url TEXT`
+  `ALTER TABLE devices ADD COLUMN fleet_url TEXT`,
+  // 기기가 보고한 always-on VPN 패키지. NULL/빈 값이면 그 기기는 다음 재부팅에 원격
+  // 관리가 끊긴다 — 재부팅 전에 알아채기 위한 유일한 신호(v2.5.2).
+  `ALTER TABLE devices ADD COLUMN always_on_vpn TEXT`
 ]) {
   try { db.exec(stmt); } catch (e) { /* already exists */ }
 }
@@ -168,11 +171,11 @@ const stmtUpsert = db.prepare(`
 INSERT INTO devices (device_id, model, serial, version_code, version_name, battery,
                      kiosk_locked, start_url, app_label, ip, videos, contact,
                      ap_ssid, ap_bssid, lat, lng, loc_accuracy, located_at,
-                     checkin_interval_ms, fleet_url, first_seen, last_seen, checkin_count)
+                     checkin_interval_ms, fleet_url, always_on_vpn, first_seen, last_seen, checkin_count)
 VALUES (@device_id, @model, @serial, @version_code, @version_name, @battery,
         @kiosk_locked, @start_url, @app_label, @ip, @videos, @contact,
         @ap_ssid, @ap_bssid, @lat, @lng, @loc_accuracy, @located_at,
-        @checkin_interval_ms, @fleet_url, @now, @now, 1)
+        @checkin_interval_ms, @fleet_url, @always_on_vpn, @now, @now, 1)
 ON CONFLICT(device_id) DO UPDATE SET
   model        = excluded.model,
   serial       = excluded.serial,
@@ -186,6 +189,9 @@ ON CONFLICT(device_id) DO UPDATE SET
   videos       = excluded.videos,
   contact      = excluded.contact,
   fleet_url    = COALESCE(excluded.fleet_url, devices.fleet_url),
+  -- always_on_vpn 은 COALESCE 하지 않는다. '지정이 풀렸다'는 사실 자체가 경고 대상이라
+  -- 마지막으로 알던 값을 남겨두면 위험을 가리게 된다.
+  always_on_vpn = excluded.always_on_vpn,
   -- 위치 관련 값은 있을 때만 갱신한다. 위치를 못 잡은 체크인이 한 번 끼었다고 마지막으로
   -- 알던 설치 위치까지 지워버리면, 오히려 정보가 줄어든다.
   ap_ssid      = COALESCE(excluded.ap_ssid, devices.ap_ssid),
@@ -265,6 +271,7 @@ function recordCheckin(d) {
     checkin_interval_ms: Number.isFinite(d.checkinIntervalMs) && d.checkinIntervalMs > 0
       ? d.checkinIntervalMs : null,
     fleet_url: d.fleetUrl || null,
+    always_on_vpn: d.alwaysOnVpn || null,
     now
   });
 
