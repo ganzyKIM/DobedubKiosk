@@ -462,7 +462,8 @@ if [ "$SKIP_NETBIRD" -eq 0 ]; then
           adb_run shell ip addr
           nb_ip="$(printf '%s' "$ADB_OUT" | grep -oE 'inet 100\.[0-9.]+' | head -1 | cut -d' ' -f2)"
           ok "NetBird 등록 완료 — 태블릿 넷버드 IP: ${nb_ip:-확인불가}"
-          info "이 태블릿의 함대 서버 주소는 관리자 화면에서 넷버드 주소(http://100.x.y.z:8090)로 설정하세요."
+          info "앱 v2.5+ 는 기본 서버 주소가 넷버드 주소라 별도 설정이 필요 없습니다(관리자 화면의 서버 주소는 비워두면 됨)."
+          info "(v2.4 이하 구버전 앱만 관리자 화면에서 넷버드 주소(http://100.x.y.z:8090)를 직접 입력)"
         else
           warn "40초 안에 넷버드 IP 가 붙지 않았습니다 — 태블릿 화면에서 NetBird 상태를 확인하세요."
           warn "(UI 좌표가 어긋났을 수 있습니다. 수동 절차: 원격관리_NetBird_도입.md §3)"
