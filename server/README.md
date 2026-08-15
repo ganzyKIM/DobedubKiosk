@@ -212,7 +212,12 @@ Windows 상시 구동은 [NSSM](https://nssm.cc/) 등으로 `node server.js` 를
 직접 칠 때도 `5` 처럼 마지막 자리만 넣으면 `http://<서브넷>.5:8090` 으로 펼쳐진다.
 (v1.6 부터. 그 전엔 앱이 사설 IP 로의 평문 HTTP 를 차단해 아예 불가능했다.)
 
-**다른 네트워크(도서관)**: 공인 HTTPS 주소가 필요하다.
+**다른 네트워크(도서관)**: **NetBird 로 해결한다(도입 완료, 2026-08-15).** 서버 PC와
+태블릿이 같은 NetBird 네트워크에 있으면 태블릿은 어느 망에서든 서버의 넷버드 IP
+(`http://100.x.y.z:8090`) 하나로 체크인한다 — 주소 영구 고정, 도메인·터널 불필요.
+구성·등록 절차·정책: `원격관리_NetBird_도입.md`. `관리자-실행`이 이 주소를 함께 표시한다.
+
+아래 Cloudflare Tunnel 은 **비상용 대안**으로만 남긴다(주소가 재시작마다 바뀜):
 공인 IP·포트포워딩 없이 해결하려면 **Cloudflare Tunnel**이 가장 간단하다(무료).
 설치는 윈도우 `winget install --id Cloudflare.cloudflared`, 맥 `brew install cloudflared`.
 

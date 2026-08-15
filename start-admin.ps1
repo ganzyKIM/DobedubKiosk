@@ -130,7 +130,20 @@ if (Test-Path -LiteralPath $pwFile) {
 $lanIp = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
           Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } |
           Select-Object -First 1).IPAddress
-if ($lanIp) { Info "태블릿용 주소: http://${lanIp}:$Port  (관리자 화면에 입력)" }
+if ($lanIp) { Info "태블릿용 주소(같은 와이파이): http://${lanIp}:$Port" }
+
+# NetBird 가 연결돼 있으면 다른 망의 태블릿이 쓸 고정 주소도 함께 보여준다.
+# (원격관리_NetBird_도입.md — 태블릿은 어느 망에 있든 이 주소 하나로 체크인)
+$netbird = (Get-Command netbird -ErrorAction SilentlyContinue).Source
+if (-not $netbird) {
+    $c = "C:\Program Files\NetBird\netbird.exe"
+    if (Test-Path -LiteralPath $c) { $netbird = $c }
+}
+if ($netbird) {
+    $nbIp = (& $netbird status 2>$null | Select-String 'NetBird IP:') -replace '.*NetBird IP:\s*', '' -replace '/.*', ''
+    if ($nbIp) { Info "태블릿용 주소(다른 망, NetBird): http://${nbIp}:$Port  ← 도서관 배포 기기는 이쪽" }
+    else { Warn "NetBird 데몬이 연결 안 됨 — 다른 망 태블릿이 접속 못 합니다. 확인: netbird status" }
+}
 
 if (-not $NoBrowser) {
     Start-Process "$Url/dashboard"

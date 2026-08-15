@@ -6,6 +6,7 @@
 #   ./setup-tablet.sh --skip-video        # 영상 투입 생략
 #   ./setup-tablet.sh --skip-webview      # WebView 업데이트 생략
 #   ./setup-tablet.sh --skip-debloat      # 기본 앱 정리 생략
+#   ./setup-tablet.sh --skip-netbird      # NetBird 설치·등록 생략
 #   ./setup-tablet.sh --force-video       # 같은 영상이 있어도 다시 push
 #   ./setup-tablet.sh --subdomain splib   # 도서관 주소를 묻지 않고 지정
 #   ./setup-tablet.sh --apk <경로>        # 설치할 APK 직접 지정
@@ -85,7 +86,11 @@ START_URL=""
 SKIP_VIDEO=0
 SKIP_WEBVIEW=0
 SKIP_DEBLOAT=0
+SKIP_NETBIRD=0
 FORCE_VIDEO=0
+# NetBird 원격 관리(원격관리_NetBird_도입.md). 키는 리포 밖 파일/환경변수로만.
+NETBIRD_SERVER="${NETBIRD_SERVER:-https://api.netbird.io}"
+NETBIRD_SETUP_KEY="${NETBIRD_SETUP_KEY:-}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -98,6 +103,7 @@ while [ $# -gt 0 ]; do
     --skip-video)   SKIP_VIDEO=1 ;;
     --skip-webview) SKIP_WEBVIEW=1 ;;
     --skip-debloat) SKIP_DEBLOAT=1 ;;
+    --skip-netbird) SKIP_NETBIRD=1 ;;
     --force-video)  FORCE_VIDEO=1 ;;
     -h|--help)      sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "알 수 없는 옵션: $1" >&2; exit 2 ;;
@@ -375,6 +381,98 @@ printf '%s\n' "$ROTATION_SETTINGS" | while IFS='|' read -r ns key val desc; do
     warn "$desc 적용 안 됨 (현재값: $now) — 이 기종에 없는 설정일 수 있습니다"
   fi
 done
+
+# ---------- 5.8 NetBird 설치·등록 (원격 관리 고정 주소) ----------
+#
+# 태블릿이 어느 망에 있든 함대 서버의 넷버드 IP 하나로 체크인하게 한다.
+# 절차·좌표는 실기기(TB-J606F, 1200x2000 세로)에서 확립한 것 — 원격관리_NetBird_도입.md §3.
+# ⚠ 좌표 기반 UI 자동화라서 반드시 5.5(세로 고정) 이후에 실행해야 한다.
+# ⚠ NetBird 앱은 무인 등록(managed config)을 지원하지 않아 이 방법이 유일하다.
+if [ "$SKIP_NETBIRD" -eq 0 ]; then
+  head_ "5.8 NetBird 설치·등록"
+
+  # 이미 등록돼 있으면(넷버드 IP 보유) 통째로 건너뛴다 — 재실행 안전.
+  adb_run shell ip addr
+  if printf '%s' "$ADB_OUT" | grep -q "inet 100\."; then
+    ok "이미 NetBird 에 등록되어 있습니다 (100.x 주소 보유) — 건너뜁니다"
+  else
+    adb_run shell "dumpsys activity | grep mLockTaskModeState"
+    if printf '%s' "$ADB_OUT" | grep -q "LOCKED"; then
+      warn "키오스크 잠금 상태라 NetBird 등록 UI 를 조작할 수 없습니다."
+      warn "관리자 메뉴(로고 5탭→PIN)에서 '키오스크 해제' 후 이 스크립트를 다시 실행하세요."
+    else
+      # 준비물 3개: NetBird APK / ADBKeyboard APK / setup key
+      nb_apk="$(find "$SCRIPT_DIR" "$SCRIPT_DIR/.." -maxdepth 1 -name 'netbird-*.apk' 2>/dev/null | head -1)"
+      kb_apk="$(find "$SCRIPT_DIR" "$SCRIPT_DIR/.." -maxdepth 1 -name 'ADBKeyboard.apk' 2>/dev/null | head -1)"
+      if [ -z "$NETBIRD_SETUP_KEY" ] && [ -f "$SCRIPT_DIR/netbird-setup-key.txt" ]; then
+        NETBIRD_SETUP_KEY="$(tr -d ' \r\n' < "$SCRIPT_DIR/netbird-setup-key.txt")"
+      fi
+
+      if [ -z "$nb_apk" ] || [ -z "$kb_apk" ] || [ -z "$NETBIRD_SETUP_KEY" ]; then
+        warn "NetBird 등록을 건너뜁니다 — 준비물이 없습니다:"
+        [ -z "$nb_apk" ] && info "netbird-*.apk 를 스크립트 옆에 두세요 (github netbirdio/android-client 릴리스)"
+        [ -z "$kb_apk" ] && info "ADBKeyboard.apk 를 스크립트 옆에 두세요 (한글 IME 우회용)"
+        [ -z "$NETBIRD_SETUP_KEY" ] && info "setup key 를 netbird-setup-key.txt 또는 NETBIRD_SETUP_KEY 환경변수로 (대시보드 Settings > Setup Keys)"
+      else
+        info "NetBird APK 설치: $(basename "$nb_apk")"
+        adb_run install -r "$nb_apk"
+        adb_run install -r "$kb_apk"
+        # 한글 IME 가 켜져 있으면 input text 가 자모로 깨진다 → 브로드캐스트 IME 로 교체
+        adb_run shell ime enable com.android.adbkeyboard/.AdbIME
+        adb_run shell ime set com.android.adbkeyboard/.AdbIME
+        adb_run shell svc power stayon usb   # 자동화 중 화면 꺼짐 방지
+
+        nb_tap() { adb_run shell input tap "$1" "$2"; sleep "${3:-1}"; }
+        nb_text() { adb_run shell am broadcast -a ADB_CLEAR_TEXT; adb_run shell am broadcast -a ADB_INPUT_TEXT --es msg "$1"; }
+
+        info "NetBird 등록 UI 자동 조작 중 (약 30초)..."
+        adb_run shell monkey -p io.netbird.client -c android.intent.category.LAUNCHER 1
+        sleep 4
+        nb_tap 600 1101 2      # Continue (첫 실행 안내)
+        nb_tap 54 84           # 드로어
+        nb_tap 158 618 2       # Change Server
+        nb_tap 599 1096 1      # Yes (로컬 설정 초기화 동의)
+        nb_tap 399 354         # + Add this device with a setup key
+        nb_tap 599 268         # Server 필드
+        nb_text "$NETBIRD_SERVER"
+        nb_tap 599 425         # Setup key 필드
+        nb_text "$NETBIRD_SETUP_KEY"
+        sleep 1
+        nb_tap 599 694 3       # Change
+        nb_tap 599 1128 2      # 확인 (Server was changed)
+        adb_run shell monkey -p io.netbird.client -c android.intent.category.LAUNCHER 1   # 메인 화면 재진입
+        sleep 3
+        nb_tap 599 780 2       # 연결(로고) 버튼
+        nb_tap 943 1151 2      # 시스템 VPN 동의창 확인
+
+        # 등록 검증: 넷버드 IP(100.x)가 붙을 때까지 최대 40초
+        nb_ok=0
+        for _ in $(seq 1 20); do
+          sleep 2
+          adb_run shell ip addr
+          if printf '%s' "$ADB_OUT" | grep -q "inet 100\."; then nb_ok=1; break; fi
+        done
+
+        # 뒷정리: doze 예외, 키보드 원복, 화면 유지 해제 (성패와 무관하게)
+        adb_run shell dumpsys deviceidle whitelist +io.netbird.client
+        adb_run shell ime set com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME
+        adb_run shell svc power stayon false
+
+        if [ "$nb_ok" -eq 1 ]; then
+          adb_run shell ip addr
+          nb_ip="$(printf '%s' "$ADB_OUT" | grep -oE 'inet 100\.[0-9.]+' | head -1 | cut -d' ' -f2)"
+          ok "NetBird 등록 완료 — 태블릿 넷버드 IP: ${nb_ip:-확인불가}"
+          info "이 태블릿의 함대 서버 주소는 관리자 화면에서 넷버드 주소(http://100.x.y.z:8090)로 설정하세요."
+        else
+          warn "40초 안에 넷버드 IP 가 붙지 않았습니다 — 태블릿 화면에서 NetBird 상태를 확인하세요."
+          warn "(UI 좌표가 어긋났을 수 있습니다. 수동 절차: 원격관리_NetBird_도입.md §3)"
+        fi
+      fi
+    fi
+  fi
+else
+  head_ "5.8 NetBird 설치·등록 (건너뜀: --skip-netbird)"
+fi
 
 # ---------- 6. 기본 앱(블로트웨어) 정리 ----------
 if [ "$SKIP_DEBLOAT" -eq 0 ]; then
