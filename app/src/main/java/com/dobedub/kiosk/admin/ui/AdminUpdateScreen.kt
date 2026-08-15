@@ -59,18 +59,19 @@ fun AdminUpdateScreen(viewModel: AdminViewModel, onBack: () -> Unit) {
             overflow = TextOverflow.Ellipsis
         )
 
-        Text("함대 서버 주소 (비우면 기본값 사용)")
+        Text("함대 서버 주소")
         val lanPrefix = remember { FleetServerDiscovery.subnetPrefix() }
         Text(
-            if (lanPrefix != null)
-                "같은 와이파이면 마지막 자리만 입력해도 됩니다 (예: 5 → $lanPrefix.5:8090)"
-            else "https:// 는 생략해도 됩니다",
+            "넷버드에 등록된 태블릿은 비워두면 됩니다(기본값이 넷버드 주소). " +
+                if (lanPrefix != null)
+                    "임시로 같은 와이파이의 로컬 서버를 쓸 때만 마지막 자리 입력 (예: 5 → $lanPrefix.5:8090)"
+                else "http(s):// 는 생략해도 됩니다",
             style = MaterialTheme.typography.bodySmall
         )
         OutlinedTextField(
             value = serverUrl,
             onValueChange = { serverUrl = it },
-            placeholder = { Text(lanPrefix?.let { "5" } ?: BuildConfig.FLEET_SERVER_URL) },
+            placeholder = { Text("비움 = ${BuildConfig.FLEET_SERVER_URL}") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
@@ -81,10 +82,13 @@ fun AdminUpdateScreen(viewModel: AdminViewModel, onBack: () -> Unit) {
                 scanning = true
                 updateStatus = "서버를 찾는 중…"
                 scope.launch {
-                    // 기본 주소(NetBird)와 현재 저장 주소를 먼저 두드리고, 없으면 LAN 스캔.
-                    // NetBird 에 등록된 기기는 어느 망에 있든 여기서 잡힌다.
+                    // 현재 입력값(축약 입력은 펼쳐서)과 기본 주소(NetBird)를 먼저 두드리고,
+                    // 없으면 LAN 스캔. NetBird 에 등록된 기기는 어느 망에 있든 여기서 잡힌다.
                     val found = FleetServerDiscovery.discoverSmart(
-                        listOf(serverUrl, com.dobedub.kiosk.BuildConfig.FLEET_SERVER_URL)
+                        listOf(
+                            KioskSettingsRepository.normalizeFleetUrl(serverUrl, lanPrefix),
+                            BuildConfig.FLEET_SERVER_URL
+                        )
                     )
                     if (found != null) {
                         serverUrl = found
