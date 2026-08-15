@@ -74,6 +74,9 @@ class MainActivity : ComponentActivity() {
         hideSystemBars()
         handleProvisioningIntent(intent)
         startPeriodicUpdateChecks()
+        // 재부팅 시 NetBird VPN 이 시스템 차원에서 자동으로 올라오게 — 부팅 직후 원격 관리
+        // 끊김 방지(QA-4). NetBird 미설치/Device Owner 아님이면 조용히 아무것도 안 한다.
+        app.kioskManager.ensureAlwaysOnVpn()
 
         setContent {
             DobedubKioskTheme {

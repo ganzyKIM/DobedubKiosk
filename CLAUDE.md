@@ -137,7 +137,7 @@ TB-J606F 내장 마이크가 약해 더빙 목소리가 원본 성우보다 훨�
 | `server/start-tunnel.ps1` / `.sh` | 공인 HTTPS 원격 접속 경로(Cloudflare Quick Tunnel) 실행 스크립트 |
 | `기획문서.md` | 최초 기획 배경 |
 
-## 현재 상태 (2026-08-15) — v2.3.2 / `versionCode=24`
+## 현재 상태 (2026-08-15) — v2.4.1 / `versionCode=26`
 
 `versionCode`는 절대 되돌리지 말 것(업데이트 트리거 기준). versionName은 v1.0에서 한 번
 리셋했고 이후 계속 올라간다.
@@ -300,6 +300,14 @@ TB-J606F 내장 마이크가 약해 더빙 목소리가 원본 성우보다 훨�
   - 재부팅 후 디스플레이가 rotation 1(가로)로 올라오는 간헐 현상 관찰 — 앱은 세로 고정이라
     양옆 검은 여백으로 나타난다. `settings put system user_rotation 0` 으로 즉시 복귀
     (세팅 스크립트 5.5단계가 이미 고정하지만 재부팅 시 간헐 재발).
+- v2.4 동영상 플레이어 컨트롤을 아동용 어법으로 — 기본 IconButton(24dp 흰 아이콘)을
+  KidActionButton 원형 버튼으로 교체(재생/일시정지 88dp KidGreen 중앙, ±5초 ChevronsLeft/
+  Right 64dp KidBlue, 처음부터 Rotate 64dp KidPurple, 상단 '목록' 알약). 시크바 KidGreen.
+  아이콘은 Tabler 로 홈 화면과 통일.
+- v2.4.1 재부팅 시 NetBird 자동 연결 — `KioskManager.ensureAlwaysOnVpn()` 이 앱 시작 시
+  Device Owner 권한으로 NetBird 를 always-on VPN 지정(lockdown=false — VPN 이 죽어도
+  도서관 웹뷰는 살아야 함). 핫스팟 QA-4 실측에서 NetBird 앱이 재부팅 후 스스로 안 붙어
+  원격 관리가 끊기는 것을 확인한 데 따른 조치. NetBird 미설치 기기에선 no-op.
 - v1.6 서버 주소 자동 찾기 + 축약 입력, 배포 이력 10개 페이지네이션.
   이때 `network_security_config`를 **평문 HTTP 전면 허용**으로 바꿨다 — 사설 IP 대역
   와일드카드를 지원하지 않아 선별 허용이 불가능. 웹뷰는 코드로 도메인 화이트리스트가
