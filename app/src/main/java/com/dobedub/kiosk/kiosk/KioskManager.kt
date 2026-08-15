@@ -24,6 +24,37 @@ class KioskManager(private val context: Context) {
 
     fun isDeviceOwner(): Boolean = dpm.isDeviceOwnerApp(context.packageName)
 
+    /**
+     * NetBird 가 설치돼 있으면 always-on VPN 으로 지정한다 — 재부팅 후 앱 UI 를 거치지 않고
+     * 시스템이 VPN 을 자동으로 올린다. 원격 관리(체크인)가 넷버드 주소로 가므로 이게 없으면
+     * **재부팅 한 번에 원격 관리가 끊긴다**(2026-08-15 핫스팟 QA-4 에서 실측 — NetBird 앱은
+     * 스스로 부팅 후 재연결하지 않았다).
+     *
+     * lockdown=false 인 이유: true 면 VPN 이 죽는 순간 태블릿의 모든 통신이 끊겨 도서관
+     * 웹뷰(공인 HTTPS 직결)까지 죽는다. false 면 넷버드가 죽어도 키오스크 서비스는 살고
+     * 원격 관리만 잠시 끊긴다 — 실패 모드가 훨씬 온화하다.
+     *
+     * 멱등: 이미 지정돼 있으면 다시 지정해도 무해. NetBird 미설치 기기(구형 세팅)에서는
+     * 아무것도 하지 않는다.
+     */
+    fun ensureAlwaysOnVpn() {
+        if (!isDeviceOwner()) return
+        try {
+            context.packageManager.getPackageInfo(NETBIRD_PACKAGE, 0)
+        } catch (e: Exception) {
+            return   // NetBird 미설치 — 지정할 수 없다
+        }
+        try {
+            if (dpm.getAlwaysOnVpnPackage(adminComponent) != NETBIRD_PACKAGE) {
+                dpm.setAlwaysOnVpnPackage(adminComponent, NETBIRD_PACKAGE, /* lockdownEnabled= */ false)
+                Log.i(TAG, "NetBird 를 always-on VPN 으로 지정")
+            }
+        } catch (e: Exception) {
+            // 일부 기기/버전에서 UnsupportedOperationException 가능 — 원격 관리는 수동 연결로 폴백
+            Log.w(TAG, "always-on VPN 지정 실패: ${e.message}")
+        }
+    }
+
     /** 홈 버튼/최근앱/전원 메뉴 등을 막고 이 앱만 실행되는 잠금 태스크 모드로 진입한다. */
     fun enterKioskMode(activity: Activity) {
         if (!isDeviceOwner()) {
@@ -132,5 +163,6 @@ class KioskManager(private val context: Context) {
 
     companion object {
         private const val TAG = "KioskManager"
+        private const val NETBIRD_PACKAGE = "io.netbird.client"
     }
 }
