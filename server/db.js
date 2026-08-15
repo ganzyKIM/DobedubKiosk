@@ -133,7 +133,13 @@ for (const stmt of [
   // 영상 배포 방식: 'force' = 기기가 받는 즉시 다운로드, 'ask' = 기기 화면에서 동의 후 다운로드
   `ALTER TABLE video_pushes ADD COLUMN mode TEXT NOT NULL DEFAULT 'force'`,
   // 1이면 다음 체크인 때 사용 여부와 무관하게 즉시 설치(관리자의 명시적 강제 업데이트)
-  `ALTER TABLE devices ADD COLUMN force_update INTEGER NOT NULL DEFAULT 0`
+  `ALTER TABLE devices ADD COLUMN force_update INTEGER NOT NULL DEFAULT 0`,
+  // 1이면 다음 체크인 응답에 재부팅 지시를 1회 싣고 즉시 내린다(fire-and-forget — 아래 주석)
+  `ALTER TABLE devices ADD COLUMN reboot_requested INTEGER NOT NULL DEFAULT 0`,
+  // 관리자가 지정한 함대 서버 주소(원격 이전용). 기기 보고값(fleet_url)과 다르면 지시 전송
+  `ALTER TABLE devices ADD COLUMN fleet_url_override TEXT`,
+  // 기기가 체크인마다 보고하는 "현재 쓰는" 함대 서버 주소(완료 판정 근거)
+  `ALTER TABLE devices ADD COLUMN fleet_url TEXT`
 ]) {
   try { db.exec(stmt); } catch (e) { /* already exists */ }
 }
@@ -162,11 +168,11 @@ const stmtUpsert = db.prepare(`
 INSERT INTO devices (device_id, model, serial, version_code, version_name, battery,
                      kiosk_locked, start_url, app_label, ip, videos, contact,
                      ap_ssid, ap_bssid, lat, lng, loc_accuracy, located_at,
-                     checkin_interval_ms, first_seen, last_seen, checkin_count)
+                     checkin_interval_ms, fleet_url, first_seen, last_seen, checkin_count)
 VALUES (@device_id, @model, @serial, @version_code, @version_name, @battery,
         @kiosk_locked, @start_url, @app_label, @ip, @videos, @contact,
         @ap_ssid, @ap_bssid, @lat, @lng, @loc_accuracy, @located_at,
-        @checkin_interval_ms, @now, @now, 1)
+        @checkin_interval_ms, @fleet_url, @now, @now, 1)
 ON CONFLICT(device_id) DO UPDATE SET
   model        = excluded.model,
   serial       = excluded.serial,
@@ -179,6 +185,7 @@ ON CONFLICT(device_id) DO UPDATE SET
   ip           = excluded.ip,
   videos       = excluded.videos,
   contact      = excluded.contact,
+  fleet_url    = COALESCE(excluded.fleet_url, devices.fleet_url),
   -- 위치 관련 값은 있을 때만 갱신한다. 위치를 못 잡은 체크인이 한 번 끼었다고 마지막으로
   -- 알던 설치 위치까지 지워버리면, 오히려 정보가 줄어든다.
   ap_ssid      = COALESCE(excluded.ap_ssid, devices.ap_ssid),
@@ -257,6 +264,7 @@ function recordCheckin(d) {
     located_at: Number.isFinite(d.locatedAt) ? d.locatedAt : null,
     checkin_interval_ms: Number.isFinite(d.checkinIntervalMs) && d.checkinIntervalMs > 0
       ? d.checkinIntervalMs : null,
+    fleet_url: d.fleetUrl || null,
     now
   });
 
@@ -350,6 +358,19 @@ function requestUpdatePrompt(deviceId) { stmtRequestPrompt.run(deviceId); }
 const stmtRequestForce = db.prepare(`UPDATE devices SET force_update = 1 WHERE device_id = ?`);
 /** 이 기기를 사용(재생) 중이어도 다음 체크인 때 즉시 설치하라고 지시한다(관리자 명시 선택). */
 function requestForceUpdate(deviceId) { stmtRequestForce.run(deviceId); }
+
+// 원격 재부팅. **fire-and-forget 예외** — 다른 지시는 "기기 보고 기반 완료 판정"이 규약이지만
+// 재부팅은 반복 실행되면 안 되는 지시라(응답 유실 시 다음 체크인마다 재부팅 루프),
+// 응답에 1회 싣는 순간 플래그를 내린다. 유실되면 관리자가 다시 누르면 된다.
+const stmtRequestReboot = db.prepare(`UPDATE devices SET reboot_requested = 1 WHERE device_id = ?`);
+const stmtClearReboot = db.prepare(`UPDATE devices SET reboot_requested = 0 WHERE device_id = ?`);
+function requestReboot(deviceId) { stmtRequestReboot.run(deviceId); }
+function consumeReboot(deviceId) { stmtClearReboot.run(deviceId); }
+
+// 함대 서버 주소 원격 변경(NetBird 이전, 향후 AWS 이전용). 완료 판정은 기기 보고 기반 —
+// override 와 기기가 보고한 fleet_url 이 같아지면 자동으로 안 보낸다(setContact 와 동일 규약).
+const stmtSetFleetUrlOverride = db.prepare(`UPDATE devices SET fleet_url_override = ? WHERE device_id = ?`);
+function setFleetUrlOverride(deviceId, url) { stmtSetFleetUrlOverride.run(url || null, deviceId); }
 
 const stmtOutdatedDeviceIds = db.prepare(
   `SELECT device_id FROM devices WHERE version_code IS NULL OR version_code < ?`
@@ -457,6 +478,7 @@ module.exports = {
   queueVideoPush, pendingVideoPushes, clearVideoPush,
   getRelease, listReleases, getReleaseById, insertRelease, setReleaseFilename, activateRelease,
   requestUpdatePrompt, requestUpdatePromptForOutdated, requestForceUpdate,
+  requestReboot, consumeReboot, setFleetUrlOverride,
   setContactOverride, requestPinReset,
   insertMedia, setMediaFilename, setMediaThumb, listMedia, getMedia, deleteMedia,
   listManual, getManual, appendManual, deleteManual, moveManual

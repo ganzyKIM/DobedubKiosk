@@ -20,6 +20,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,6 +34,7 @@ import com.dobedub.kiosk.ui.components.BackTopBar
 import com.dobedub.kiosk.ui.theme.AccentRed
 import com.dobedub.kiosk.ui.theme.LabelSecondary
 import com.dobedub.kiosk.update.AppUpdater
+import com.dobedub.kiosk.update.DownloadState
 import kotlinx.coroutines.launch
 
 data class AdminMenuEntry(val title: String, val subtitle: String, val onClick: () -> Unit)
@@ -64,6 +66,13 @@ fun AdminMenuScreen(
     var showReleaseConfirm by remember { mutableStateOf(false) }
     var checking by remember { mutableStateOf(false) }
     var updateStatus by remember { mutableStateOf<String?>(null) }
+
+    // 업데이트 확인이 실제로는 APK 를 내려받는 중일 수 있다(원격/릴레이 경유는 수 분).
+    // 멈춘 "확인 중…"만 보이면 무한 로딩으로 오해해 연타하게 되므로 퍼센트를 그대로 보여준다.
+    val transfers by DownloadState.transfers.collectAsState()
+    val apkTransfer = transfers.values.firstOrNull { it.kind == "apk" }
+    val apkProgress = apkTransfer?.takeIf { it.total > 0 }
+        ?.let { "${it.received * 100 / it.total}%" }
 
     val entries = listOf(
         AdminMenuEntry("관리자 정보", "PIN 변경, 연락처", onOpenInfo),
@@ -115,10 +124,19 @@ fun AdminMenuScreen(
                         checking = false
                     }
                 }
-            ) { Text(if (checking) "확인 중…" else "업데이트 확인") }
+            ) {
+                Text(
+                    when {
+                        apkProgress != null -> "내려받는 중 $apkProgress"
+                        checking -> "확인 중…"
+                        else -> "업데이트 확인"
+                    }
+                )
+            }
         }
 
-        updateStatus?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+        (if (apkProgress != null) "새 버전을 내려받고 있습니다… $apkProgress" else updateStatus)
+            ?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
 
         entries.forEach { entry ->
             Column(

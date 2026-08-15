@@ -199,6 +199,27 @@ async function main() {
     await admin('/media/push/cancel', { deviceId: DEV, mediaId });   // 뒷정리
   });
 
+  await test('원격 재부팅: 응답에 1회만 실리고 즉시 소진(fire-and-forget)', async () => {
+    await admin('/device/reboot', { deviceId: DEV });
+    const r1 = await checkin(DEV, 21);
+    assert.equal(r1.reboot, true, '첫 체크인에 reboot 지시가 없음');
+    const r2 = await checkin(DEV, 21);
+    assert.ok(!r2.reboot, '두 번째 체크인에도 reboot 이 실리면 재부팅 루프가 된다');
+  });
+
+  await test('서버 주소 변경: 보고가 일치할 때까지 지시, 일치하면 중단', async () => {
+    await admin('/device/fleet-url', { deviceId: DEV, fleetUrl: 'http://100.99.99.99:8090' });
+    const r1 = await checkin(DEV, 21, { fleetUrl: 'http://old.example:8090' });
+    assert.equal(r1.setFleetUrl, 'http://100.99.99.99:8090');
+    // 응답 유실 가정 — 같은 옛 주소로 또 보고해도 계속 내려와야 한다
+    const r2 = await checkin(DEV, 21, { fleetUrl: 'http://old.example:8090' });
+    assert.equal(r2.setFleetUrl, 'http://100.99.99.99:8090');
+    // 기기가 새 주소 사용을 보고하면 중단
+    const r3 = await checkin(DEV, 21, { fleetUrl: 'http://100.99.99.99:8090' });
+    assert.ok(!r3.setFleetUrl, '적용 완료 후에도 지시가 내려오면 안 됨');
+    await admin('/device/fleet-url', { deviceId: DEV, fleetUrl: '' });   // 뒷정리(지시 철회)
+  });
+
   await test('한글 이름 영상 다운로드가 200 (Content-Disposition 헤더 회귀 방지)', async () => {
     // HTTP 헤더는 ISO-8859-1 만 허용 — 한글을 filename= 에 그대로 넣으면 500 이 난다.
     // 실기기에서 한글 영상 push 전멸의 원인이었다.

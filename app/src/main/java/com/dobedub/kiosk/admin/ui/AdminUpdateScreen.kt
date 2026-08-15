@@ -79,20 +79,24 @@ fun AdminUpdateScreen(viewModel: AdminViewModel, onBack: () -> Unit) {
             enabled = !scanning,
             onClick = {
                 scanning = true
-                updateStatus = "같은 와이파이에서 서버를 찾는 중…"
+                updateStatus = "서버를 찾는 중…"
                 scope.launch {
-                    val found = FleetServerDiscovery.discover()
+                    // 기본 주소(NetBird)와 현재 저장 주소를 먼저 두드리고, 없으면 LAN 스캔.
+                    // NetBird 에 등록된 기기는 어느 망에 있든 여기서 잡힌다.
+                    val found = FleetServerDiscovery.discoverSmart(
+                        listOf(serverUrl, com.dobedub.kiosk.BuildConfig.FLEET_SERVER_URL)
+                    )
                     if (found != null) {
                         serverUrl = found
                         viewModel.updateFleetServerUrl(found)
                         updateStatus = "서버를 찾았습니다: $found"
                     } else {
-                        updateStatus = "같은 와이파이에서 서버를 찾지 못했습니다. 주소를 직접 입력하세요."
+                        updateStatus = "서버를 찾지 못했습니다(넷버드·와이파이 모두). 주소를 직접 입력하세요."
                     }
                     scanning = false
                 }
             }
-        ) { Text(if (scanning) "찾는 중…" else "이 와이파이에서 서버 자동 찾기") }
+        ) { Text(if (scanning) "찾는 중…" else "서버 자동 찾기 (넷버드/와이파이)") }
 
         Text("기관/도서관 이름 (백오피스 식별용)")
         OutlinedTextField(

@@ -432,6 +432,7 @@ function deviceModals(d, media, builtin) {
 
   // ── 기기 설정 ──
   const contactPending = d.contact_override && d.contact_override !== d.contact;
+  const fleetUrlPending = !!(d.fleet_url_override && d.fleet_url_override !== d.fleet_url);
   const manageModal = `<dialog id="mng-${esc(d.device_id)}">
       <div class="m-h"><h3>기기 설정</h3><div class="who">${who}</div></div>
       <div class="m-b">
@@ -463,6 +464,30 @@ function deviceModals(d, media, builtin) {
                  <input type="hidden" name="deviceId" value="${esc(d.device_id)}">
                  <button class="btn ghost" type="submit">PIN 초기화</button>
                </form>`}
+        </div>
+        <div class="m-sec">
+          <h4>함대 서버 주소 (원격 변경)</h4>
+          <p>기기가 접속할 서버 주소를 원격으로 바꿉니다. 기기는 <b>새 주소가 살아있는지 확인한
+          뒤에만</b> 갈아탑니다(잘못된 주소로 기기를 잃지 않게). 서버 이전·NetBird 전환용.</p>
+          <form method="post" action="/device/fleet-url" class="row"
+                onsubmit="return confirm('이 기기의 서버 주소 변경을 지시할까요?\n기기가 새 주소 확인에 성공해야 적용됩니다.');">
+            <input type="hidden" name="deviceId" value="${esc(d.device_id)}">
+            <input name="fleetUrl" value="${esc(d.fleet_url_override || '')}"
+                   placeholder="${esc(d.fleet_url || 'http://100.x.y.z:8090')}" style="flex:1">
+            <button class="btn ghost" type="submit">지시</button>
+          </form>
+          <p class="muted small" style="margin:6px 0 0;">기기 보고 현재 주소: <span class="mono">${esc(d.fleet_url || '(미보고 — v2.4.1 이하)')}</span></p>
+          ${fleetUrlPending ? '<p style="margin:8px 0 0;"><span class="chip warn">적용 대기 — 기기가 새 주소를 쓰기 시작하면 사라집니다</span></p>' : ''}
+        </div>
+        <div class="m-sec">
+          <h4>원격 재부팅</h4>
+          <p>강제 업데이트 후 화면이 안 돌아오는 간헐 현상의 원격 복구 수단입니다.
+          지시는 <b>1회만</b> 내려가며, 반응이 없으면 다시 누르면 됩니다.</p>
+          <form method="post" action="/device/reboot"
+                onsubmit="return confirm('이 기기를 지금 재부팅할까요?\n사용 중이면 화면이 끊깁니다.');">
+            <input type="hidden" name="deviceId" value="${esc(d.device_id)}">
+            <button class="btn ghost" type="submit">기기 재부팅</button>
+          </form>
         </div>
         <div class="m-sec">
           <h4>기기 정보</h4>
