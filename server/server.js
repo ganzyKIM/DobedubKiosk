@@ -346,6 +346,8 @@ app.post('/api/checkin', (req, res) => {
       // 멋대로 확정 처리하지 않도록, boolean 일 때만 넘긴다.
       hasCustomPin: typeof b.hasCustomPin === 'boolean' ? b.hasCustomPin : undefined,
       checkinIntervalMs: Number(b.checkinIntervalMs),
+      // 기기가 현재 쓰는 함대 서버 주소(v2.5+) — setFleetUrl 지시의 완료 판정 근거
+      fleetUrl: typeof b.fleetUrl === 'string' ? b.fleetUrl.slice(0, 200) : null,
       // 설치 장소 식별용. AP는 항상 잡히지만 좌표는 NLP 켜진 기기에서만 온다.
       apSsid: typeof b.apSsid === 'string' ? b.apSsid.slice(0, 64) : null,
       apBssid: typeof b.apBssid === 'string' ? b.apBssid.slice(0, 32) : null,
@@ -367,6 +369,19 @@ app.post('/api/checkin', (req, res) => {
     resp.setContact = deviceRow.contact_override;
   }
   if (deviceRow && deviceRow.pin_reset) resp.resetPin = true;
+
+  // 원격 재부팅 — fire-and-forget: 응답에 1회 싣고 즉시 플래그를 내린다. 유실 시 재부팅
+  // 루프를 막는 것이 재전송보다 중요하다(관리자가 다시 누르면 그만).
+  if (deviceRow && deviceRow.reboot_requested) {
+    resp.reboot = true;
+    store.consumeReboot(deviceId);
+  }
+  // 함대 서버 주소 원격 변경 — setContact 와 같은 보고 기반 규약. 기기가 새 주소를
+  // 쓰고 있다고 보고할 때까지 계속 내려간다(응답 유실에 강함).
+  if (deviceRow && deviceRow.fleet_url_override &&
+      deviceRow.fleet_url_override !== deviceRow.fleet_url) {
+    resp.setFleetUrl = deviceRow.fleet_url_override;
+  }
 
   resp.deleteVideos = store.pendingVideoDeletes(deviceId);
   const base = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
@@ -639,6 +654,26 @@ app.post('/device/update-force', auth.requireAuth, (req, res) => {
   if (req.body.deviceId) {
     store.requestForceUpdate(String(req.body.deviceId));
     wakeDevice(String(req.body.deviceId));
+  }
+  backToReferer(req, res);
+});
+
+// 원격 재부팅: 강제 업데이트 후 재기동이 걸리는 간헐 현상(검은 화면)의 원격 복구 수단.
+app.post('/device/reboot', auth.requireAuth, (req, res) => {
+  if (req.body.deviceId) {
+    store.requestReboot(String(req.body.deviceId));
+    wakeDevice(String(req.body.deviceId));
+  }
+  backToReferer(req, res);
+});
+
+// 함대 서버 주소 원격 변경(빈 값이면 지시 철회). NetBird 이전·서버 이사 때 전 기기를
+// 현장 방문 없이 갈아태우는 수단. 기기는 새 주소의 /health 를 확인한 뒤에만 저장한다.
+app.post('/device/fleet-url', auth.requireAuth, (req, res) => {
+  if (req.body.deviceId) {
+    const url = String(req.body.fleetUrl || '').trim().replace(/\/+$/, '');
+    store.setFleetUrlOverride(String(req.body.deviceId), url || null);
+    if (url) wakeDevice(String(req.body.deviceId));
   }
   backToReferer(req, res);
 });

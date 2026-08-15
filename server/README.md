@@ -179,10 +179,12 @@ Windows 상시 구동은 [NSSM](https://nssm.cc/) 등으로 `node server.js` 를
   ISO-8859-1 만 허용이라 한글 파일명을 그대로 넣으면 500이 난다(실제로 그랬다).
 
 대시보드 폼이 호출하는 관리용 라우트(로그인 필요): `/release/upload`, `/release/rollback`,
-`/release/notify-outdated`, `/device/update-prompt`, `/device/update-force`, `/device/label`,
+`/release/notify-outdated`, `/device/update-prompt`, `/device/update-force`, `/device/reboot`,
+`/device/fleet-url`, `/device/label`,
 `/device/contact`, `/device/pin-reset`, `/device/delete`, `/device/video/delete`,
 `/media/upload`, `/media/push`(+`mode=force|ask`), `/media/push/cancel`, `/media/delete`.
-영상 push/삭제·업데이트 알림/강제는 접수 즉시 `wakeDevice()` 로 해당 기기를 깨운다.
+영상 push/삭제·업데이트 알림/강제·재부팅·서버 주소 변경은 접수 즉시 `wakeDevice()` 로
+해당 기기를 깨운다.
 
 ### 지시가 먹혔는지 확인하는 방식
 
@@ -197,9 +199,21 @@ Windows 상시 구동은 [NSSM](https://nssm.cc/) 등으로 `node server.js` 를
 | `resetPin` | `pin_reset = 1` | 기기가 `hasCustomPin: false` 를 보고하면 플래그 해제 |
 | `forceUpdate` | `force_update = 1` | 기기가 최신 `versionCode` 를 보고하면 플래그 해제 |
 | `pushVideos` | 대기열에 행이 남아 있는 동안 | 기기 인벤토리에 그 파일명이 나타나면 행 제거 |
+| `setFleetUrl` | `fleet_url_override` ≠ 기기가 보고한 `fleetUrl` | 두 값이 같아지면 자동으로 안 보냄 |
 
 `hasCustomPin` 을 안 보내는 구버전 앱(v1.9 이하)의 체크인은 완료 판정에 쓰지 않는다 —
 값 없음을 false 로 오해하면 지시가 실행되지도 않은 채 지워진다.
+
+**`reboot` 만은 예외로 1회성(fire-and-forget)이다.** 응답에 실어 보내는 즉시 플래그를
+내린다(`consumeReboot`). 재부팅 여부를 기기가 보고로 증명할 방법이 없고, 보고 기반으로
+만들면 플래그가 남아 있는 동안 체크인마다 재부팅하는 무한 루프가 된다. 유실되면(기기가
+응답을 못 받으면) 관리자가 버튼을 한 번 더 누르면 된다.
+
+**`setFleetUrl` 은 기기가 새 주소의 `/health` 응답을 확인한 뒤에만 저장한다** (v2.5+).
+오타 주소를 그대로 저장하면 그 순간부터 기기가 영영 연락 두절이 되기 때문. 응답이 없는
+주소를 지정하면 기기는 지시를 무시하고 로그만 남긴다 — override 와 보고값이 계속 다르므로
+대시보드에 "변경 대기" 칩이 계속 떠 있는 것으로 실패를 알 수 있다. 지우려면 빈 값으로
+저장(override 해제). 주 용도는 기존 태블릿을 NetBird 주소로 이관하는 것.
 
 ## 관리자 PC에서 24시간 운영하기 (현재 방식)
 

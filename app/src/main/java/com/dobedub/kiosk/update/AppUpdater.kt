@@ -42,6 +42,7 @@ class AppUpdater(private val context: Context) {
     private val settings = KioskSettingsRepository(context)
     private val videoRepo = VideoRepository(context)
     private val manualRepo = ManualRepository(context)
+    private val kiosk by lazy { com.dobedub.kiosk.kiosk.KioskManager(context) }
 
     /** 확인/설치/수신이 겹쳐 돌지 않게 하는 재진입 가드(연타·자동주기와 수동 버튼 충돌 방지). */
     private val busy = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -260,6 +261,9 @@ class AppUpdater(private val context: Context) {
             // 다른 버전이 섞여 있어도 각자 올바르게 표시된다(전에는 전역 상수라 롤아웃
             // 중에 멀쩡한 구버전 기기가 전부 미접속으로 보였다).
             put("checkinIntervalMs", CHECKIN_INTERVAL_MS)
+            // 현재 쓰는 함대 서버 주소 — setFleetUrl 원격 지시의 완료 판정 근거(서버는 이
+            // 값이 override 와 같아질 때까지 지시를 계속 내린다).
+            put("fleetUrl", baseUrl)
             // 이 태블릿이 어느 도서관에 있는지 가려내기 위한 정보.
             // 접속 AP 는 항상 잡히고, 좌표는 NLP(Google 위치 정확도)가 켜진 기기에서만 나온다.
             WifiHelper.connectedAp(context)?.let { ap ->
@@ -307,6 +311,29 @@ class AppUpdater(private val context: Context) {
         if (json.optBoolean("resetPin", false) && s.hasPinConfigured) {
             settings.clearAdminPin()
             Log.i(TAG, "백오피스 지시로 관리자 PIN 초기화(0000)")
+        }
+
+        // 백오피스가 지시한 함대 서버 주소 변경(기존 태블릿을 NetBird 주소로 이관하는 용도).
+        // 새 주소의 /health 가 실제로 응답할 때만 저장한다 — 오타 주소를 그대로 믿고 저장하면
+        // 그 순간부터 기기가 영영 연락 두절이 된다. 완료 판정은 report 기반: 다음 체크인
+        // payload 의 fleetUrl 이 override 와 같아지면 서버가 지시를 내린 것으로 처리한다.
+        val newFleetUrl = json.optString("setFleetUrl", "")
+        if (newFleetUrl.isNotBlank() && newFleetUrl != baseUrl) {
+            if (FleetServerDiscovery.probeUrl(newFleetUrl)) {
+                settings.setFleetServerUrl(newFleetUrl)
+                Log.i(TAG, "백오피스 지시로 함대 서버 주소 변경: $newFleetUrl")
+            } else {
+                Log.w(TAG, "서버 주소 변경 지시 무시 — 새 주소가 응답하지 않음: $newFleetUrl")
+            }
+        }
+
+        // 원격 재부팅 — 설치 직후 검은 화면(문서화된 간헐 현상)을 현장 방문 없이 복구하는 용도.
+        // 다른 지시와 달리 1회성(fire-and-forget)이다: 재부팅 여부를 기기가 보고로 증명할
+        // 방법이 없고, 플래그가 남아 있으면 재부팅 무한 루프가 된다. 서버는 응답에 싣는 즉시
+        // 플래그를 내리고, 함께 온 다른 지시들은 report 기반이라 재부팅 후 다시 내려온다.
+        if (json.optBoolean("reboot", false)) {
+            Log.i(TAG, "백오피스 지시로 재부팅")
+            kiosk.rebootDevice()   // dpm.reboot — 여기서 프로세스가 끝난다
         }
 
         // 백오피스가 지시한 영상 삭제 실행(원격 영상 관리).

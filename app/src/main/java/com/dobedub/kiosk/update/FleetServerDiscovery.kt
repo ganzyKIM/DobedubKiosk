@@ -42,6 +42,34 @@ object FleetServerDiscovery {
         localIpv4()?.substringBeforeLast('.', "")?.takeIf { it.count { c -> c == '.' } == 2 }
 
     /**
+     * 후보 URL(현재 저장 주소, 빌드 기본값=NetBird 주소)을 먼저 두드려보고, 응답이 없으면
+     * LAN 서브넷 스캔으로 넘어간다. NetBird 로 연결된 기기는 어느 망에 있든 1초 안에
+     * 기본 주소가 잡히므로, "자동 찾기"가 사무실 밖에서도 동작하게 된다.
+     */
+    suspend fun discoverSmart(candidates: List<String>, port: Int = DEFAULT_FLEET_PORT): String? =
+        withContext(Dispatchers.IO) {
+            for (url in candidates.map { it.trim().trimEnd('/') }.filter { it.isNotBlank() }.distinct()) {
+                if (probeUrl(url)) {
+                    Log.i(TAG, "후보 주소 응답: $url")
+                    return@withContext url
+                }
+            }
+            discover(port)
+        }
+
+    /** 완전한 URL 의 /health 를 확인한다(후보 주소 검사용 — NetBird 경유는 왕복이 느릴 수 있어 여유). */
+    fun probeUrl(base: String): Boolean = try {
+        val conn = (URL("$base/health").openConnection() as HttpURLConnection).apply {
+            connectTimeout = 2500
+            readTimeout = 2500
+        }
+        val ok = conn.responseCode == 200 &&
+            conn.inputStream.bufferedReader().use { it.readText() }.trim() == "ok"
+        conn.disconnect()
+        ok
+    } catch (e: Exception) { false }
+
+    /**
      * 서브넷 전체를 훑어 함대 서버를 찾는다. 찾으면 `http://<ip>:<port>` 형태로 반환.
      * 여러 대가 응답하면 첫 번째를 쓴다(현장에 서버가 둘일 일은 없다).
      */

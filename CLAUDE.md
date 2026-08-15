@@ -137,7 +137,7 @@ TB-J606F 내장 마이크가 약해 더빙 목소리가 원본 성우보다 훨�
 | `server/start-tunnel.ps1` / `.sh` | 공인 HTTPS 원격 접속 경로(Cloudflare Quick Tunnel) 실행 스크립트 |
 | `기획문서.md` | 최초 기획 배경 |
 
-## 현재 상태 (2026-08-15) — v2.4.1 / `versionCode=26`
+## 현재 상태 (2026-08-15) — v2.5 / `versionCode=27`
 
 `versionCode`는 절대 되돌리지 말 것(업데이트 트리거 기준). versionName은 v1.0에서 한 번
 리셋했고 이후 계속 올라간다.
@@ -308,6 +308,30 @@ TB-J606F 내장 마이크가 약해 더빙 목소리가 원본 성우보다 훨�
   Device Owner 권한으로 NetBird 를 always-on VPN 지정(lockdown=false — VPN 이 죽어도
   도서관 웹뷰는 살아야 함). 핫스팟 QA-4 실측에서 NetBird 앱이 재부팅 후 스스로 안 붙어
   원격 관리가 끊기는 것을 확인한 데 따른 조치. NetBird 미설치 기기에선 no-op.
+- v2.5 원격 대응 일괄 정비 — "같은 와이파이" 전제로 만들어진 기능들을 NetBird 시대에 맞게.
+  - **원격 재부팅**(`devices.reboot_requested` → 응답 `reboot:true`): 설치 후 검은 화면
+    간헐 증상의 원격 복구 수단. **완료 판정 규약의 유일한 예외 — 1회성(fire-and-forget)**.
+    응답에 싣는 즉시 플래그를 내린다(`consumeReboot`). 재부팅을 기기 보고로 증명할 방법이
+    없고, 보고 기반이면 플래그가 남은 동안 체크인마다 재부팅하는 무한 루프가 된다.
+    한계: 앱이 죽어 체크인이 끊긴 기기에는 못 닿는다(지시 채널이 앱 안에 있으므로).
+  - **서버 주소 원격 변경**(`devices.fleet_url_override` → 응답 `setFleetUrl`): 기존
+    태블릿을 NetBird 주소로 이관하는 용도. 기기는 **새 주소 `/health` 가 실제로 응답할
+    때만 저장** — 오타를 그대로 믿으면 그 순간 영영 연락 두절이다. 완료 판정은 보고 기반:
+    체크인 payload 에 `fleetUrl`(현재 사용 주소)을 실어 보내고, override 와 같아지면
+    서버가 지시를 내린다. 실패는 대시보드 "변경 대기" 칩이 계속 남는 것으로 드러난다.
+  - **기본 서버 주소를 NetBird 고정 주소로**(gradle.properties `fleetServerUrl`).
+    이전 기본값 `https://kiosk.dobedub.com` 은 실존하지 않는 죽은 주소였다 — 신규 기기는
+    이제 주소 입력 없이(넷버드 등록만 돼 있으면) 바로 관리된다.
+  - **서버 자동 찾기 확장**(`FleetServerDiscovery.discoverSmart`): 저장된 주소 → 빌드
+    기본값(NetBird) 순으로 `/health` 를 먼저 두드리고, 없을 때만 기존 LAN /24 스캔.
+    "자동 찾기"가 사무실 밖 어느 망에서도 동작하게 됐다. 후보 probe 는 릴레이 왕복을
+    감안해 타임아웃 2.5초.
+  - **수동 업데이트 확인에 진행률**: 확인 버튼이 APK 를 실제로 내려받는 중이면(원격
+    릴레이는 수 분) 멈춘 "확인 중…" 대신 `DownloadState` 의 apk 전송 퍼센트를 버튼과
+    상태줄에 그대로 표시 — 무한 로딩으로 오해해 연타하던 문제(재진입 가드가 막던 그
+    연타)의 원인 제거.
+  - 서버 테스트 14개(원격 재부팅 1회성, 서버 주소 변경 보고 기반 판정 추가). checkin
+    라우트가 `fleetUrl` 을 recordCheckin 에 안 넘기던 버그를 테스트가 잡았다(red-green).
 - v1.6 서버 주소 자동 찾기 + 축약 입력, 배포 이력 10개 페이지네이션.
   이때 `network_security_config`를 **평문 HTTP 전면 허용**으로 바꿨다 — 사설 IP 대역
   와일드카드를 지원하지 않아 선별 허용이 불가능. 웹뷰는 코드로 도메인 화이트리스트가
