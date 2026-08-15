@@ -551,6 +551,13 @@ function devicesTab({ devices, release, media, stats, thresholds, builtinManual 
     const manual = d.manualImages || [];
     const waiting = (d.pendingPushes || []).length + (d.pendingDeletes || []).length;
 
+    // 재부팅하면 원격 관리가 끊길 기기를 **재부팅 전에** 드러낸다. 기기가 always-on VPN
+    // 지정 사실을 보고하지 않으면(구버전이거나 지정 실패) 이 칩이 뜬다 — 이 경고가 없어서
+    // "코드는 넣었으니 됐겠지" 하고 넘어갔다가 재부팅 QA 를 한 사이클 날렸다.
+    const vpnChip = d.always_on_vpn
+      ? ''
+      : '<span class="chip warn" title="재부팅하면 넷버드가 자동으로 안 붙어 원격 관리가 끊깁니다. 앱 v2.5.2 이상으로 업데이트하세요.">VPN 미지정</span>';
+
     // 기기 식별: 기관명이 주인공, 접속 중인 AP 가 "어느 도서관인지"의 실질적 단서다.
     const place = [];
     if (d.ap_ssid) place.push(esc(d.ap_ssid));
@@ -580,7 +587,7 @@ function devicesTab({ devices, release, media, stats, thresholds, builtinManual 
       </td>
       <td class="nowrap">
         <div class="stack">
-          <span>${d.kiosk_locked ? '<span class="chip quiet">잠김</span>' : '<span class="chip warn">해제됨</span>'}</span>
+          <span>${d.kiosk_locked ? '<span class="chip quiet">잠김</span>' : '<span class="chip warn">해제됨</span>'}${vpnChip}</span>
           <span class="mono">배터리 ${Number.isFinite(d.battery) ? d.battery + '%' : '-'}</span>
         </div>
       </td>

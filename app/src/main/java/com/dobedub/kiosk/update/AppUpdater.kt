@@ -264,6 +264,10 @@ class AppUpdater(private val context: Context) {
             // 현재 쓰는 함대 서버 주소 — setFleetUrl 원격 지시의 완료 판정 근거(서버는 이
             // 값이 override 와 같아질 때까지 지시를 계속 내린다).
             put("fleetUrl", baseUrl)
+            // 재부팅 후 원격 관리가 살아 돌아올지를 미리 알려주는 유일한 신호.
+            // 지정이 안 돼 있으면(null) 그 기기는 다음 재부팅에 연락이 끊긴다 — 재부팅
+            // 전에 대시보드에서 보이게 하려고 보고한다(v2.5.2 사고의 재발 방지).
+            put("alwaysOnVpn", kiosk.alwaysOnVpnPackage() ?: JSONObject.NULL)
             // 이 태블릿이 어느 도서관에 있는지 가려내기 위한 정보.
             // 접속 AP 는 항상 잡히고, 좌표는 NLP(Google 위치 정확도)가 켜진 기기에서만 나온다.
             WifiHelper.connectedAp(context)?.let { ap ->

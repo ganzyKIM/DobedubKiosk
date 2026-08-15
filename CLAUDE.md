@@ -137,7 +137,7 @@ TB-J606F 내장 마이크가 약해 더빙 목소리가 원본 성우보다 훨�
 | `server/start-tunnel.ps1` / `.sh` | 공인 HTTPS 원격 접속 경로(Cloudflare Quick Tunnel) 실행 스크립트 |
 | `기획문서.md` | 최초 기획 배경 |
 
-## 현재 상태 (2026-08-15) — v2.5.1 / `versionCode=28`
+## 현재 상태 (2026-08-15) — v2.5.2 / `versionCode=29`
 
 `versionCode`는 절대 되돌리지 말 것(업데이트 트리거 기준). versionName은 v1.0에서 한 번
 리셋했고 이후 계속 올라간다.
@@ -341,6 +341,26 @@ TB-J606F 내장 마이크가 약해 더빙 목소리가 원본 성우보다 훨�
   자동 찾기 후보를 normalizeFleetUrl 로 펼쳐서 probe, FleetServerDiscovery 주석 갱신,
   세팅 스크립트(.sh/.ps1 쌍)의 "주소 수동 설정" 안내를 "v2.5+ 불필요"로, NetBird 도입
   문서 §3/§4 현행화.
+- v2.5.2 **재부팅 후 원격 관리가 끊기던 진짜 원인 — 매니페스트 `<queries>` 누락**.
+  v2.4.1 의 `ensureAlwaysOnVpn()` 은 실행되고 있었는데 아무 일도 안 하고 있었다.
+  **Android 11+ 패키지 가시성**: targetSdk 30 이상인 앱은 `<queries>` 선언이 없으면
+  다른 앱이 **설치돼 있어도 안 보인다** → `getPackageInfo("io.netbird.client")` 가
+  NameNotFoundException → "미설치"로 판단하고 조용히 return. 실측 확인 방법:
+  `adb shell dumpsys device_policy | grep -i alwayson` 가 `mAlwaysOnVpnPackage=null`,
+  `dumpsys package queries` 에 우리 앱→넷버드 가시성 항목 없음.
+  - **교훈: 조용한 early-return 을 만들지 말 것.** 두 갈래(Device Owner 아님 / 넷버드
+    못 찾음)가 전부 무로그 return 이라, 로그를 봐도 "호출은 됐나?"조차 알 수 없었다.
+    재부팅 QA 를 한 사이클 통째로 날리고 "핫스팟이 꺼졌나" 하는 엉뚱한 가설까지 세웠다.
+    지금은 모든 경로가 로그를 남긴다.
+  - **상태를 보고하게 만들었다**: 체크인 payload `alwaysOnVpn` → `devices.always_on_vpn`
+    → 대시보드 기기 행에 **"VPN 미지정" 경고 칩**. 재부팅해 보기 전에 위험 기기를
+    알아채는 유일한 방법이다. 이 값만은 `COALESCE` 하지 않는다 — "지정이 풀렸다"가
+    바로 경고 대상이라 옛 값을 남기면 위험을 가린다.
+  - 실측(케이블 연결 상태, 핫스팟): 재부팅 발사 23:22:08 → 부팅 완료 23:22:54 →
+    **부팅 8초 후 23:23:02 자동 체크인**(넷버드 tun0 100.x 자동 기동, 릴레이 경유).
+    QA-4 **합격**.
+  - ⚠ 기존 배포 3대는 v2.5.2 미만이라 **전부 같은 문제를 안고 있다**. 업데이트가 닿기
+    전까지는 재부팅 시 현장 조치가 필요하다(넷버드 앱 수동 연결).
 - v1.6 서버 주소 자동 찾기 + 축약 입력, 배포 이력 10개 페이지네이션.
   이때 `network_security_config`를 **평문 HTTP 전면 허용**으로 바꿨다 — 사설 IP 대역
   와일드카드를 지원하지 않아 선별 허용이 불가능. 웹뷰는 코드로 도메인 화이트리스트가

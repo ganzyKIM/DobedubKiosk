@@ -14,6 +14,13 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
+    <!-- Android 11+ 패키지 가시성. 이 선언이 없으면 다른 앱은 **설치돼 있어도 안 보인다** —
+         getPackageInfo 가 NameNotFoundException 을 던진다. 이것 때문에 always-on VPN 지정이
+         조용히 건너뛰어져 재부팅 후 원격 관리가 끊겼다(QA-4). 넷버드를 볼 수 있어야 한다. -->
+    <queries>
+        <package android:name="io.netbird.client" />
+    </queries>
+
     <application
         android:name=".KioskApplication"
         android:allowBackup="false"

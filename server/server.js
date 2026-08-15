@@ -348,6 +348,8 @@ app.post('/api/checkin', (req, res) => {
       checkinIntervalMs: Number(b.checkinIntervalMs),
       // 기기가 현재 쓰는 함대 서버 주소(v2.5+) — setFleetUrl 지시의 완료 판정 근거
       fleetUrl: typeof b.fleetUrl === 'string' ? b.fleetUrl.slice(0, 200) : null,
+      // 기기가 보고한 always-on VPN 패키지(v2.5.2+). null 이면 재부팅 시 원격 관리가 끊긴다.
+      alwaysOnVpn: typeof b.alwaysOnVpn === 'string' ? b.alwaysOnVpn.slice(0, 100) : null,
       // 설치 장소 식별용. AP는 항상 잡히지만 좌표는 NLP 켜진 기기에서만 온다.
       apSsid: typeof b.apSsid === 'string' ? b.apSsid.slice(0, 64) : null,
       apBssid: typeof b.apBssid === 'string' ? b.apBssid.slice(0, 32) : null,

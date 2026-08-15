@@ -207,6 +207,18 @@ async function main() {
     assert.ok(!r2.reboot, '두 번째 체크인에도 reboot 이 실리면 재부팅 루프가 된다');
   });
 
+  await test('always-on VPN 보고가 대시보드에 보인다 (재부팅 생존 사전 경고)', async () => {
+    // 미지정 상태로 보고 → 대시보드에 경고가 떠야 한다. 이게 없으면 "재부팅하면 끊기는
+    // 기기"를 재부팅해 본 뒤에야 알게 된다(실제로 그렇게 QA 한 사이클을 날렸다).
+    await checkin(DEV, 21, { alwaysOnVpn: null });
+    const warn = await (await fetch(`${BASE}/dashboard`, { headers: { Cookie: cookie } })).text();
+    assert.ok(warn.includes('VPN 미지정'), '미지정 경고가 대시보드에 없음');
+
+    await checkin(DEV, 21, { alwaysOnVpn: 'io.netbird.client' });
+    const ok = await (await fetch(`${BASE}/dashboard`, { headers: { Cookie: cookie } })).text();
+    assert.ok(!ok.includes('VPN 미지정'), '지정된 뒤에도 경고가 남아 있음');
+  });
+
   await test('서버 주소 변경: 보고가 일치할 때까지 지시, 일치하면 중단', async () => {
     await admin('/device/fleet-url', { deviceId: DEV, fleetUrl: 'http://100.99.99.99:8090' });
     const r1 = await checkin(DEV, 21, { fleetUrl: 'http://old.example:8090' });
