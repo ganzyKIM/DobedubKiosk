@@ -138,6 +138,8 @@ sdk.dir=C\:\\Android\\Sdk
 | 샘플 동영상 (`../[두비덥 보이스툰] ...`, 약 3.4GB) | 재생 테스트 시 | USB 복사. 코드 개발만 할 땐 없어도 됨 |
 | Android System WebView APK | 태블릿 세팅 시 | 현재 폴더에 없음. 필요하면 APKMirror에서 다시 받아 리포 **상위 폴더**에 둔다 |
 | `userManual.png` 원본 | 매뉴얼 교체 시만 | 이미 타일(`app/src/main/res/drawable-nodpi/user_manual_*.png`)로 리포에 커밋됨 |
+| `netbird-setup-key.txt` | 태블릿 세팅 시 | NetBird 대시보드(Settings > Setup Keys)에서 발급해 직접 작성. **커밋 금지(gitignore)** |
+| `netbird-*.apk` + `ADBKeyboard.apk` | 태블릿 세팅 시 | github netbirdio/android-client 릴리스 / senzhk/ADBKeyBoard. `*.apk` 라 커밋 안 됨 |
 | `server/data/` (기기 DB + 업로드 APK) | 운영 서버만 | 로컬 테스트용이면 안 옮겨도 됨(자동 생성) |
 | 빌드 산출물(`app/build/`, `*.apk`) | 아니오 | 새 PC에서 다시 빌드 |
 

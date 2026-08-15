@@ -24,3 +24,7 @@ server/data/
 
 # Claude Code 머신별 로컬 설정(권한 허용 목록 등)
 .claude/
+
+# NetBird 태블릿 등록용 사전 인증 키 — 공개 저장소에 절대 커밋 금지.
+# 유출 시 대시보드(Settings > Setup Keys)에서 revoke 하고 새 키로 교체할 것.
+netbird-setup-key.txt

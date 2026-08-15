@@ -155,9 +155,21 @@ if [ -z "$lan_ip" ]; then
   done
 fi
 if [ -n "$lan_ip" ]; then
-  info "태블릿용 주소: http://${lan_ip}:$PORT  (태블릿 관리자 화면에 입력)"
+  info "태블릿용 주소(같은 와이파이): http://${lan_ip}:$PORT"
 else
   warn "LAN IP 를 찾지 못했습니다 — 와이파이에 연결되어 있는지 확인하세요."
+fi
+
+# NetBird 가 연결돼 있으면 다른 망의 태블릿이 쓸 고정 주소도 함께 보여준다.
+# (원격관리_NetBird_도입.md — 태블릿은 어느 망에 있든 이 주소 하나로 체크인)
+NB="$(command -v netbird 2>/dev/null || { [ -x /opt/homebrew/bin/netbird ] && echo /opt/homebrew/bin/netbird; })"
+if [ -n "$NB" ]; then
+  nb_ip="$("$NB" status 2>/dev/null | awk '/NetBird IP:/{print $3}' | cut -d/ -f1)"
+  if [ -n "$nb_ip" ]; then
+    info "태블릿용 주소(다른 망, NetBird): http://${nb_ip}:$PORT  ← 도서관 배포 기기는 이쪽"
+  else
+    warn "NetBird 데몬이 연결 안 됨 — 다른 망 태블릿이 접속 못 합니다. 확인: netbird status"
+  fi
 fi
 
 if [ "$NO_BROWSER" -ne 1 ]; then

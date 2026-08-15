@@ -38,7 +38,11 @@ param(
     [switch]$SkipVideo,
     [switch]$SkipWebView,
     [switch]$SkipDebloat,
-    [switch]$ForceVideo
+    [switch]$SkipNetBird,
+    [switch]$ForceVideo,
+    # NetBird 원격 관리(원격관리_NetBird_도입.md). 키는 리포 밖 파일/환경변수로만.
+    [string]$NetBirdServer = "https://api.netbird.io",
+    [string]$NetBirdSetupKey = $env:NETBIRD_SETUP_KEY
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -342,6 +346,91 @@ foreach ($s in $RotationSettings) {
     $now = (Adb shell settings get $s.Ns $s.Key).Text.Trim()
     if ($now -eq $s.Val) { Ok "$($s.Desc)  ($($s.Ns)/$($s.Key)=$now)" }
     else { Warn "$($s.Desc) 적용 안 됨 (현재값: $now) — 이 기종에 없는 설정일 수 있습니다" }
+}
+
+# ---------- 5.8 NetBird 설치·등록 (원격 관리 고정 주소) ----------
+#
+# 태블릿이 어느 망에 있든 함대 서버의 넷버드 IP 하나로 체크인하게 한다.
+# 절차·좌표는 실기기(TB-J606F, 1200x2000 세로)에서 확립 — 원격관리_NetBird_도입.md §3.
+# ⚠ 좌표 기반 UI 자동화라 반드시 5.5(세로 고정) 이후에 실행. 맥 스크립트(setup-tablet.sh
+#   5.8단계)와 한 쌍 — 한쪽을 고치면 반드시 같이 고칠 것.
+if (-not $SkipNetBird) {
+    Head "5.8 NetBird 설치·등록"
+
+    $already = (Adb shell ip addr).Text -match "inet 100\."
+    if ($already) {
+        Ok "이미 NetBird 에 등록되어 있습니다 (100.x 주소 보유) — 건너뜁니다"
+    } elseif ((Adb shell "dumpsys activity | grep mLockTaskModeState").Text -match "LOCKED") {
+        Warn "키오스크 잠금 상태라 NetBird 등록 UI 를 조작할 수 없습니다."
+        Warn "관리자 메뉴(로고 5탭→PIN)에서 '키오스크 해제' 후 다시 실행하세요."
+    } else {
+        $nbApk = Get-ChildItem -LiteralPath $PSScriptRoot, (Join-Path $PSScriptRoot "..") -Filter "netbird-*.apk" -ErrorAction SilentlyContinue | Select-Object -First 1
+        $kbApk = Get-ChildItem -LiteralPath $PSScriptRoot, (Join-Path $PSScriptRoot "..") -Filter "ADBKeyboard.apk" -ErrorAction SilentlyContinue | Select-Object -First 1
+        $keyFile = Join-Path $PSScriptRoot "netbird-setup-key.txt"
+        if (-not $NetBirdSetupKey -and (Test-Path -LiteralPath $keyFile)) {
+            $NetBirdSetupKey = (Get-Content -LiteralPath $keyFile -Raw).Trim()
+        }
+
+        if (-not $nbApk -or -not $kbApk -or -not $NetBirdSetupKey) {
+            Warn "NetBird 등록을 건너뜁니다 — 준비물이 없습니다:"
+            if (-not $nbApk) { Info "netbird-*.apk 를 스크립트 옆에 (github netbirdio/android-client 릴리스)" }
+            if (-not $kbApk) { Info "ADBKeyboard.apk 를 스크립트 옆에 (한글 IME 우회용)" }
+            if (-not $NetBirdSetupKey) { Info "setup key 를 netbird-setup-key.txt 또는 NETBIRD_SETUP_KEY 환경변수로" }
+        } else {
+            Info "NetBird APK 설치: $($nbApk.Name)"
+            Adb install -r "$($nbApk.FullName)" | Out-Null
+            Adb install -r "$($kbApk.FullName)" | Out-Null
+            Adb shell ime enable com.android.adbkeyboard/.AdbIME | Out-Null
+            Adb shell ime set com.android.adbkeyboard/.AdbIME | Out-Null
+            Adb shell svc power stayon usb | Out-Null
+
+            function NbTap($x, $y, $wait = 1) { Adb shell input tap $x $y | Out-Null; Start-Sleep -Seconds $wait }
+            function NbText($t) {
+                Adb shell am broadcast -a ADB_CLEAR_TEXT | Out-Null
+                Adb shell am broadcast -a ADB_INPUT_TEXT --es msg "$t" | Out-Null
+            }
+
+            Info "NetBird 등록 UI 자동 조작 중 (약 30초)..."
+            Adb shell monkey -p io.netbird.client -c android.intent.category.LAUNCHER 1 | Out-Null
+            Start-Sleep -Seconds 4
+            NbTap 600 1101 2      # Continue
+            NbTap 54 84           # 드로어
+            NbTap 158 618 2      # Change Server
+            NbTap 599 1096 1      # Yes
+            NbTap 399 354         # + Add this device with a setup key
+            NbTap 599 268         # Server 필드
+            NbText $NetBirdServer
+            NbTap 599 425         # Setup key 필드
+            NbText $NetBirdSetupKey
+            Start-Sleep -Seconds 1
+            NbTap 599 694 3       # Change
+            NbTap 599 1128 2      # 확인
+            Adb shell monkey -p io.netbird.client -c android.intent.category.LAUNCHER 1 | Out-Null
+            Start-Sleep -Seconds 3
+            NbTap 599 780 2       # 연결(로고)
+            NbTap 943 1151 2      # VPN 동의 확인
+
+            $nbOk = $false
+            foreach ($i in 1..20) {
+                Start-Sleep -Seconds 2
+                if ((Adb shell ip addr).Text -match "inet (100\.[0-9.]+)") { $nbOk = $true; $nbIp = $Matches[1]; break }
+            }
+
+            Adb shell dumpsys deviceidle whitelist +io.netbird.client | Out-Null
+            Adb shell ime set com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME | Out-Null
+            Adb shell svc power stayon false | Out-Null
+
+            if ($nbOk) {
+                Ok "NetBird 등록 완료 — 태블릿 넷버드 IP: $nbIp"
+                Info "이 태블릿의 함대 서버 주소는 관리자 화면에서 넷버드 주소(http://100.x.y.z:8090)로 설정하세요."
+            } else {
+                Warn "40초 안에 넷버드 IP 가 붙지 않았습니다 — 태블릿 화면에서 NetBird 상태를 확인하세요."
+                Warn "(UI 좌표가 어긋났을 수 있습니다. 수동 절차: 원격관리_NetBird_도입.md §3)"
+            }
+        }
+    }
+} else {
+    Head "5.8 NetBird 설치·등록 (건너뜀: -SkipNetBird)"
 }
 
 # ---------- 6. 기본 앱(블로트웨어) 정리 ----------
