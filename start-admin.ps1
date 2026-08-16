@@ -89,7 +89,7 @@ if ($procId) {
         Die "server\server.js 가 없습니다. 이 스크립트는 DobedubKiosk 폴더 안에 있어야 합니다."
     }
     if (-not (Test-Path -LiteralPath (Join-Path $ServerDir "node_modules"))) {
-        Die "server\node_modules 가 없습니다. 먼저 의존성을 설치하세요:`n       cd server; npm install"
+        Die "server\node_modules 가 없습니다. 같은 폴더의 [서버-준비.bat] 을 먼저 한 번 실행하세요.`n       (직접 하려면: cd server; npm install)"
     }
 
     # ---------- 3. 백그라운드 실행 ----------
