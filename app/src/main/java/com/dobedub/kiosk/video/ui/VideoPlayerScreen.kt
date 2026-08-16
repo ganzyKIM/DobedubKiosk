@@ -11,18 +11,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.Replay5
-import androidx.compose.material.icons.filled.Forward5
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -42,7 +34,21 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.dobedub.kiosk.ui.components.KidActionButton
+import com.dobedub.kiosk.ui.theme.KidBlue
+import com.dobedub.kiosk.ui.theme.KidBlueDark
+import com.dobedub.kiosk.ui.theme.KidGreen
+import com.dobedub.kiosk.ui.theme.KidGreenDark
+import com.dobedub.kiosk.ui.theme.KidPurple
+import com.dobedub.kiosk.ui.theme.KidPurpleDark
 import com.dobedub.kiosk.video.VideoItem
+import compose.icons.TablerIcons
+import compose.icons.tablericons.ArrowLeft
+import compose.icons.tablericons.ChevronsLeft
+import compose.icons.tablericons.ChevronsRight
+import compose.icons.tablericons.PlayerPause
+import compose.icons.tablericons.PlayerPlay
+import compose.icons.tablericons.Rotate
 import kotlinx.coroutines.delay
 
 private const val CONTROLS_AUTO_HIDE_MS = 3_000L
@@ -135,21 +141,28 @@ fun VideoPlayerScreen(
         )
 
         if (controlsVisible) {
+            // 상단바: 목록으로 돌아가기 — 앱 공통 어법(KidActionButton 알약)으로.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopStart)
                     .background(Color.Black.copy(alpha = 0.35f))
                     .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                IconButton(onClick = {
+                KidActionButton(
+                    icon = TablerIcons.ArrowLeft,
+                    contentDescription = "목록으로",
+                    face = KidBlue,
+                    shade = KidBlueDark,
+                    label = "목록",
+                    size = 56.dp
+                ) {
                     onUserInteraction()
                     onBackToList()
-                }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "목록으로", tint = Color.White)
                 }
-                Text(video.title, color = Color.White, style = MaterialTheme.typography.titleMedium)
+                Text(video.title, color = Color.White, style = MaterialTheme.typography.titleLarge)
             }
 
             Column(
@@ -157,57 +170,71 @@ fun VideoPlayerScreen(
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
                     .background(Color.Black.copy(alpha = 0.45f))
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(horizontal = 20.dp, vertical = 14.dp)
             ) {
+                // 컨트롤 버튼: 홈 화면 버튼과 같은 동글동글 어법. 가운데 재생/일시정지가
+                // 가장 크고(88dp), 좌우 탐색이 그다음(64dp) — 아이 손가락 기준 큼직하게.
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally)
+                    horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally)
                 ) {
-                    IconButton(onClick = {
+                    KidActionButton(
+                        icon = TablerIcons.Rotate,
+                        contentDescription = "처음부터",
+                        face = KidPurple,
+                        shade = KidPurpleDark,
+                        size = 64.dp
+                    ) {
                         onUserInteraction()
                         player.seekTo(0)
                         player.play()
-                    }) {
-                        Icon(Icons.Filled.Replay, contentDescription = "처음부터", tint = Color.White)
                     }
 
-                    IconButton(onClick = {
+                    KidActionButton(
+                        icon = TablerIcons.ChevronsLeft,
+                        contentDescription = "5초 뒤로",
+                        face = KidBlue,
+                        shade = KidBlueDark,
+                        size = 64.dp
+                    ) {
                         onUserInteraction()
                         player.seekTo((player.currentPosition - SEEK_STEP_MS).coerceAtLeast(0L))
-                    }) {
-                        Icon(Icons.Filled.Replay5, contentDescription = "5초 뒤로", tint = Color.White)
                     }
 
-                    IconButton(onClick = {
+                    KidActionButton(
+                        icon = if (isPlaying) TablerIcons.PlayerPause else TablerIcons.PlayerPlay,
+                        contentDescription = if (isPlaying) "일시정지" else "재생",
+                        face = KidGreen,
+                        shade = KidGreenDark,
+                        size = 88.dp
+                    ) {
                         onUserInteraction()
                         if (player.isPlaying) player.pause() else player.play()
-                    }) {
-                        Icon(
-                            if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = if (isPlaying) "일시정지" else "재생",
-                            tint = Color.White
-                        )
                     }
 
-                    IconButton(onClick = {
+                    KidActionButton(
+                        icon = TablerIcons.ChevronsRight,
+                        contentDescription = "5초 앞으로",
+                        face = KidBlue,
+                        shade = KidBlueDark,
+                        size = 64.dp
+                    ) {
                         onUserInteraction()
                         val target = player.currentPosition + SEEK_STEP_MS
                         player.seekTo(if (durationMs > 0) target.coerceAtMost(durationMs) else target)
-                    }) {
-                        Icon(Icons.Filled.Forward5, contentDescription = "5초 앞으로", tint = Color.White)
                     }
                 }
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = formatDuration(positionMs),
                         color = Color.White,
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.width(48.dp)
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.width(56.dp)
                     )
                     Slider(
                         value = if (durationMs > 0) (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f,
@@ -216,13 +243,18 @@ fun VideoPlayerScreen(
                             val target = (fraction * durationMs).toLong()
                             player.seekTo(target)
                         },
+                        colors = SliderDefaults.colors(
+                            thumbColor = KidGreen,
+                            activeTrackColor = KidGreen,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.35f)
+                        ),
                         modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
                     )
                     Text(
                         text = formatDuration(durationMs),
                         color = Color.White,
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.width(48.dp)
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.width(56.dp)
                     )
                 }
             }
