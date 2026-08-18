@@ -291,9 +291,16 @@ async function main() {
 
 main()
   .catch(e => { console.error(e); results.push(['fail', '(테스트 러너 자체 오류)']); })
-  .finally(() => {
-    if (server) server.kill('SIGTERM');
-    fs.rmSync(DATA_DIR, { recursive: true, force: true });
+  .finally(async () => {
+    // Windows 는 다른 프로세스가 열고 있는 파일이 든 디렉터리 삭제를 EPERM 으로 거부한다
+    // (mac/리눅스는 열린 파일도 unlink 돼서 이 문제가 안 드러난다). kill 직후 바로 지우면
+    // 12개가 전부 통과해도 마지막에 터져 npm test 가 실패로 끝난다 → 종료를 기다린 뒤 지운다.
+    if (server) {
+      const exited = new Promise(res => server.once('exit', res));
+      server.kill('SIGTERM');
+      await Promise.race([exited, new Promise(res => setTimeout(res, 5000))]);
+    }
+    fs.rmSync(DATA_DIR, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     const fails = results.filter(r => r[0] === 'fail').length;
     console.log(`\n  ${results.length}개 중 ${results.length - fails}개 통과${fails ? `, ${fails}개 실패` : ''}`);
     process.exit(fails ? 1 : 0);
