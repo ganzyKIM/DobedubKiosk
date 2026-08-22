@@ -2,6 +2,7 @@ package com.dobedub.kiosk.web
 
 import android.annotation.SuppressLint
 import android.util.Log
+import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -23,7 +24,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import com.dobedub.kiosk.MediaPlaybackState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -159,6 +162,36 @@ private const val MIC_LIMIT_KNEE_DB = 8.0   // 6→8: 더 부드럽게 진입
 private const val MIC_LIMIT_ATTACK_S = 0.010 // 5→10ms: 어절 시작 트랜지언트에서 급제동 방지
 private const val MIC_LIMIT_RELEASE_S = 0.15 // 0.10→0.15: 어절 끝에서 게인이 튀어오르지 않게
 
+/**
+ * 페이지 안 미디어 재생 감지 → 네이티브 하트비트. 무조작 홈 복귀가 "감상 중"을 알 수 있는
+ * 유일한 통로다(웹뷰는 재생 상태를 밖으로 알려주지 않는다).
+ *  - play/pause/ended 는 버블링하지 않지만 **캡처 단계** 리스너에는 도달한다 — document
+ *    하나로 모든 <audio>/<video> 를 덮는다.
+ *  - 사이트가 Web Audio 로 재생하는 경우를 위해 AudioBufferSourceNode.start 도 잡는다
+ *    (대사 한 줄 = start() 한 번이라, 줄마다 하트비트가 갱신된다).
+ *  - 재생 중일 때만 15초 간격 하트비트 — 페이지가 죽으면 신호도 같이 죽고, 네이티브 쪽
+ *    lease(45초)가 스스로 풀린다(MediaPlaybackState 참조).
+ */
+private val MEDIA_WATCH_JS = """
+(function(){
+  if (window.__dbdMediaWatch) return; window.__dbdMediaWatch = true;
+  var playing = new Set();
+  function beat(){ try { KioskNative.mediaHeartbeat(); } catch (e) {} }
+  document.addEventListener('play', function(e){ playing.add(e.target); beat(); }, true);
+  function drop(e){ playing.delete(e.target); }
+  document.addEventListener('pause', drop, true);
+  document.addEventListener('ended', drop, true);
+  document.addEventListener('emptied', drop, true);
+  try {
+    if (window.AudioBufferSourceNode) {
+      var os = AudioBufferSourceNode.prototype.start;
+      AudioBufferSourceNode.prototype.start = function(){ beat(); return os.apply(this, arguments); };
+    }
+  } catch (e) {}
+  setInterval(function(){ if (playing.size > 0) beat(); }, 15000);
+})();
+"""
+
 private val MIC_GAIN_FIX_JS = """
 (function(){
   if (window.__dobedubMicGain) return;
@@ -269,6 +302,10 @@ fun RestrictedWebViewScreen(
     onUserInteraction: () -> Unit
 ) {
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    // 웹뷰 화면을 떠나면 "감상 중" lease 를 즉시 해제한다(만료 45초를 기다릴 이유가 없다).
+    DisposableEffect(Unit) {
+        onDispose { MediaPlaybackState.clearWebMedia() }
+    }
     var isLoading by remember { mutableStateOf(true) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var blockedMessage by remember { mutableStateOf<String?>(null) }
@@ -374,6 +411,17 @@ fun RestrictedWebViewScreen(
                         // 사이트가 모듈 로드 때 getUserMedia 참조를 미리 바인딩해두면 onPageFinished
                         // 주입은 이미 늦고(실기기 CDP로 확인함), iframe 안 코드도 못 덮는다.
                         // addDocumentStartJavaScript 는 모든 프레임에 페이지 스크립트보다 먼저 실행된다.
+                        // 페이지 JS(MEDIA_WATCH_JS)가 부르는 하트비트 수신구.
+                        // @JavascriptInterface 붙은 메서드만 노출된다.
+                        addJavascriptInterface(object {
+                            @JavascriptInterface
+                            fun mediaHeartbeat() = MediaPlaybackState.noteWebMediaHeartbeat()
+                        }, "KioskNative")
+                        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                            runCatching {
+                                WebViewCompat.addDocumentStartJavaScript(this, MEDIA_WATCH_JS, setOf("*"))
+                            }.onFailure { Log.w("KioskWebView", "미디어 감지 주입 실패: ${it.message}") }
+                        }
                         if (MIC_PROCESSING_ENABLED &&
                             WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
                             runCatching {
@@ -425,6 +473,8 @@ fun RestrictedWebViewScreen(
 
                             override fun onPageFinished(view: WebView, url: String?) {
                                 isLoading = false
+                                // DOCUMENT_START_SCRIPT 미지원 기기 폴백 — __dbdMediaWatch 가드로 멱등
+                                view.evaluateJavascript(MEDIA_WATCH_JS, null)
                                 // WebView의 dvh=0 버그로 리더가 붕괴하는 것만 vh로 바로잡는다(폭/transform 불변).
                                 view.evaluateJavascript(READER_HEIGHT_FIX_JS, null)
                             }

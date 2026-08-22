@@ -18,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import com.dobedub.kiosk.MediaPlaybackState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -84,6 +85,8 @@ fun VideoPlayerScreen(
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
+                // 무조작 홈 복귀가 "감상 중"을 알 수 있게 재생 상태를 공유한다(검토 §1-1).
+                MediaPlaybackState.videoPlaying = playing
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -95,6 +98,7 @@ fun VideoPlayerScreen(
         }
         player.addListener(listener)
         onDispose {
+            MediaPlaybackState.videoPlaying = false   // 화면을 떠나면 반드시 해제
             player.removeListener(listener)
             player.release()
         }
