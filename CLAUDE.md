@@ -188,7 +188,7 @@ getUserMedia 제약 강제: autoGainControl=true, echoCancellation=true, noiseSu
 앞으로 개발선은 31 부터, 납품선은 28~30 을 쓴다.
 같은 태블릿에 두 계열을 섞어 올리지 않는다.
 
-## 현재 상태 (2026-08-18) — v2.5.3 / `versionCode=30`
+## 현재 상태 (2026-08-22) — v2.5.4 / `versionCode=31`
 
 `versionCode`는 절대 되돌리지 말 것(업데이트 트리거 기준). versionName은 v1.0에서 한 번
 리셋했고 이후 계속 올라간다.
@@ -430,6 +430,16 @@ getUserMedia 제약 강제: autoGainControl=true, echoCancellation=true, noiseSu
   bump 하지 않는다(퍼센트는 기존 폴링이 라이브로 그림 — 매번 새로고침하면 깜빡임).
   서버 재시작 시 rev 리셋 → 열려 있던 대시보드가 불일치를 보고 한 번 새로고침 = 오히려 안전.
   브라우저 실증: rev 불일치 → visibilitychange → 2초 내 reload 확인. 테스트 16개.
+- v2.5.4 **감상 중 무조작 홈 복귀 유예** (서비스_완성도_검토.md §1-1, P0). 무조작 판정
+  (기본 5분)이 터치만 봐서 긴 영상을 얌전히 보던 아이가 재생 도중 홈으로 튕겼다.
+  `MediaPlaybackState`(단일 출처)를 두고 `returnToHomeIfIdle` 이 감상 중이면 타이머만 다시 건다.
+  - 동영상: ExoPlayer `onIsPlayingChanged` 가 boolean 으로 직접 보고(dispose 에서 해제).
+  - 웹뷰(더빙/웹툰 오디오): 주입 JS 가 재생 감지 → `KioskNative.mediaHeartbeat()` 15초 간격
+    → **만료 있는 lease 45초**. boolean 이 아니라 lease 인 이유: 페이지 이동/크래시로 신호가
+    소리 없이 끊겨도 저절로 풀려야 "영영 홈 복귀 안 되는 기기"가 안 생긴다(자기복구).
+  - play/pause/ended 는 버블링하지 않지만 **캡처 단계 리스너에는 도달** — document 하나로
+    전 요소를 덮는다. Web Audio 재생 대비 `AudioBufferSourceNode.start` 도 후킹.
+  - 단위 테스트 5개(`MediaPlaybackStateTest`).
 - v1.6 서버 주소 자동 찾기 + 축약 입력, 배포 이력 10개 페이지네이션.
   이때 `network_security_config`를 **평문 HTTP 전면 허용**으로 바꿨다 — 사설 IP 대역
   와일드카드를 지원하지 않아 선별 허용이 불가능. 웹뷰는 코드로 도메인 화이트리스트가
