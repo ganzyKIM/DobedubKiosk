@@ -249,6 +249,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun returnToHomeIfIdle() {
+        // 감상 중(동영상 재생, 웹뷰 오디오 재생)은 무조작으로 치지 않는다 — 이 판정이 터치만
+        // 봐서, 무조작 시간(기본 5분)보다 긴 영상을 얌전히 보던 아이가 재생 도중 홈으로
+        // 튕겼다(서비스_완성도_검토.md §1-1). 타이머만 다시 걸고 물러난다.
+        if (MediaPlaybackState.isWatching()) {
+            resetIdleTimer()
+            return
+        }
         val nav = navController ?: return
         if (nav.currentDestination?.route != Routes.HOME) {
             clearWebSession()
