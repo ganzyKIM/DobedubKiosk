@@ -199,6 +199,16 @@ async function main() {
     await admin('/media/push/cancel', { deviceId: DEV, mediaId });   // 뒷정리
   });
 
+  await test('fleet-rev: 로그인 필요 + 체크인마다 증가(대시보드 자동 새로고침 신호)', async () => {
+    const noAuth = await fetch(`${BASE}/api/fleet-rev`, { redirect: 'manual' });
+    assert.equal(noAuth.status, 302, '비로그인인데 200 이면 안 됨');
+    const r1 = await (await fetch(`${BASE}/api/fleet-rev`, { headers: { Cookie: cookie } })).json();
+    assert.ok(Number.isInteger(r1.rev), 'rev 가 정수가 아님');
+    await checkin(DEV, 21);
+    const r2 = await (await fetch(`${BASE}/api/fleet-rev`, { headers: { Cookie: cookie } })).json();
+    assert.ok(r2.rev > r1.rev, `체크인 후 rev 가 안 올랐음 (${r1.rev} → ${r2.rev})`);
+  });
+
   await test('원격 재부팅: 응답에 1회만 실리고 즉시 소진(fire-and-forget)', async () => {
     await admin('/device/reboot', { deviceId: DEV });
     const r1 = await checkin(DEV, 21);
