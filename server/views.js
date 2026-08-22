@@ -219,7 +219,7 @@ function openModal(id){
       el.className = 'chip ' + (t.status === 'failed' ? 'bad' : t.status === 'done' ? 'ok' : 'warn') + ' xfer';
       el.textContent =
         t.status === 'failed' ? '실패' + (t.error ? ': ' + t.error : '') :
-        t.status === 'done' ? (el.dataset.xferKind === 'apk' ? '설치 중' : '완료 — 새로고침하면 반영') :
+        t.status === 'done' ? (el.dataset.xferKind === 'apk' ? '설치 중' : '완료 — 곧 반영됩니다') :
         (el.dataset.xferKind === 'apk' ? 'APK ' : '수신 중 ') + pct(t);
     });
     document.querySelectorAll('.xfer-sum').forEach(function(el){
@@ -233,18 +233,39 @@ function openModal(id){
       el.textContent = '수신중 ' + mine.length + '개 ' + (tot > 0 ? Math.floor(rec / tot * 100) + '%' : '…');
     });
   }
+  // ── 자동 새로고침 ──
+  // 서버의 상태 개정 번호(/api/fleet-rev)가 이 페이지를 그린 시점(window.FLEET_REV)과
+  // 달라지면 — 체크인 도착, 전송 완료, 다른 창의 관리자 조작 — 화면을 새로 그린다.
+  // 단, 관리자가 뭔가 하는 중이면 절대 끊지 않는다: 모달이 열려 있거나, 입력칸에
+  // 포커스가 있거나, 쓰다 만 값(파일 선택 포함)이 남아 있으면 다음 기회로 미룬다.
+  function busyEditing(){
+    if (document.querySelector('dialog[open]')) return true;
+    var a = document.activeElement;
+    if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return true;
+    var dirty = false;
+    document.querySelectorAll('input[type=file]').forEach(function(i){ if (i.files && i.files.length) dirty = true; });
+    document.querySelectorAll('input[type=text], input[type=number], textarea').forEach(function(i){
+      if (i.value && i.value !== i.defaultValue) dirty = true;
+    });
+    return dirty;
+  }
   var failStreak = 0;
   async function poll(){
     if (document.visibilityState !== 'visible') return;
     try {
-      var r = await fetch('/api/transfers', { cache: 'no-store' });
-      if (!r.ok) { failStreak++; return; }
+      var pair = await Promise.all([
+        fetch('/api/transfers', { cache: 'no-store' }),
+        fetch('/api/fleet-rev', { cache: 'no-store' })
+      ]);
+      if (!pair[0].ok || !pair[1].ok) { failStreak++; return; }
       failStreak = 0;
-      apply(await r.json());
+      apply(await pair[0].json());
+      var rev = (await pair[1].json()).rev;
+      if (rev !== window.FLEET_REV && !busyEditing()) location.reload();
     } catch (e) { failStreak++; }
   }
-  // 로그인 페이지 등 대상 요소가 없으면 폴링하지 않는다.
-  if (document.querySelector('.xfer, .xfer-sum')) {
+  // 로그인 페이지(FLEET_REV 없음)에서는 폴링하지 않는다.
+  if (typeof window.FLEET_REV === 'number') {
     poll();
     setInterval(function(){ if (failStreak < 30) poll(); }, 2000);
     // 백그라운드 탭에서는 폴링을 쉬므로, 다시 보이는 순간 한 번 바로 갱신해
@@ -801,6 +822,7 @@ function dashboardPage(data) {
   ).join('');
 
   return page(`${TABS.find(t => t.id === tab).label} · 두비덥 키오스크 관리`, `
+    <script>window.FLEET_REV=${Number(data.fleetRev) || 0}</script>
     <header class="top">
       <div class="brandmark">두비덥 키오스크 <span>관리</span></div>
       <div class="top-actions">
