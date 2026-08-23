@@ -199,6 +199,13 @@ async function main() {
     await admin('/media/push/cancel', { deviceId: DEV, mediaId });   // 뒷정리
   });
 
+  await test('대시보드 헤더: 넷버드 콘솔 바로가기 + 원리 설명 팝오버', async () => {
+    const html = await (await fetch(`${BASE}/dashboard`, { headers: { Cookie: cookie } })).text();
+    assert.ok(html.includes('app.netbird.io'), '넷버드 콘솔 링크 없음');
+    assert.ok(html.includes('pop-tip'), '호버 설명 팝오버 없음');
+    assert.ok(html.includes('원리'), '설명 문구 없음');
+  });
+
   await test('fleet-rev: 로그인 필요 + 체크인마다 증가(대시보드 자동 새로고침 신호)', async () => {
     const noAuth = await fetch(`${BASE}/api/fleet-rev`, { redirect: 'manual' });
     assert.equal(noAuth.status, 302, '비로그인인데 200 이면 안 됨');
@@ -220,13 +227,15 @@ async function main() {
   await test('always-on VPN 보고가 대시보드에 보인다 (재부팅 생존 사전 경고)', async () => {
     // 미지정 상태로 보고 → 대시보드에 경고가 떠야 한다. 이게 없으면 "재부팅하면 끊기는
     // 기기"를 재부팅해 본 뒤에야 알게 된다(실제로 그렇게 QA 한 사이클을 날렸다).
+    // 주의: 헤더의 원리 설명 팝오버에도 "VPN 미지정"이라는 글귀가 항상 있다 —
+    // 경고 '칩'(</span> 로 닫힘)만 정확히 겨냥해야 설명문과 헛갈리지 않는다.
     await checkin(DEV, 21, { alwaysOnVpn: null });
     const warn = await (await fetch(`${BASE}/dashboard`, { headers: { Cookie: cookie } })).text();
-    assert.ok(warn.includes('VPN 미지정'), '미지정 경고가 대시보드에 없음');
+    assert.ok(warn.includes('VPN 미지정</span>'), '미지정 경고 칩이 대시보드에 없음');
 
     await checkin(DEV, 21, { alwaysOnVpn: 'io.netbird.client' });
     const ok = await (await fetch(`${BASE}/dashboard`, { headers: { Cookie: cookie } })).text();
-    assert.ok(!ok.includes('VPN 미지정'), '지정된 뒤에도 경고가 남아 있음');
+    assert.ok(!ok.includes('VPN 미지정</span>'), '지정된 뒤에도 경고 칩이 남아 있음');
   });
 
   await test('서버 주소 변경: 보고가 일치할 때까지 지시, 일치하면 중단', async () => {

@@ -148,6 +148,27 @@ input:focus,select:focus{border-color:var(--brand);outline:none}
 input[type=file]{padding:6px;font-size:12px}
 form.inline{display:inline}
 
+/* ── 호버 설명 팝오버 ────────────────────────────────────── */
+/* 클릭할 것(버튼)과 읽을 것(설명)을 분리한다 — 설명은 ? 배지에 올리면 나온다.
+   JS 없이 :hover/:focus-within 만 쓴다(키보드 접근 포함). */
+.pop{position:relative;display:inline-flex;align-items:center}
+.pop-badge{
+  width:26px;height:26px;border-radius:50%;border:1px solid var(--line);
+  background:var(--surface);color:var(--muted);font-weight:700;font-size:13px;
+  display:inline-flex;align-items:center;justify-content:center;cursor:help;
+}
+.pop:hover .pop-badge,.pop:focus-within .pop-badge{border-color:var(--brand);color:var(--brand-ink);background:var(--brand-soft)}
+.pop-tip{
+  display:none;position:absolute;top:calc(100% + 10px);right:-8px;width:360px;z-index:60;
+  background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  box-shadow:0 12px 40px rgba(0,0,0,.18);padding:14px 16px;
+  text-align:left;white-space:normal;font-size:12.5px;line-height:1.7;color:var(--ink-2);
+}
+.pop:hover .pop-tip,.pop:focus-within .pop-tip{display:block}
+.pop-tip h4{margin:0 0 7px;font-size:13px;color:var(--ink)}
+.pop-tip p{margin:0 0 9px}
+.pop-tip p:last-child{margin-bottom:0}
+
 /* ── 모달 ────────────────────────────────────────────────── */
 /* dialog 는 top layer 에 뜨지만 CSS 는 DOM 부모에서 상속된다. 표 안에 두면 셀의
    text-align:right / white-space:nowrap 이 그대로 넘어와 글이 우측정렬되고 줄바꿈이
@@ -826,6 +847,22 @@ function dashboardPage(data) {
     <header class="top">
       <div class="brandmark">두비덥 키오스크 <span>관리</span></div>
       <div class="top-actions">
+        <span class="pop" tabindex="0">
+          <span class="pop-badge" aria-label="원격 관리 원리 설명">?</span>
+          <span class="pop-tip">
+            <h4>넷버드로 원격 관리가 되는 원리</h4>
+            <p><b>태블릿과 이 PC는 넷버드(WireGuard VPN)라는 가상 전용망으로 묶여 있습니다.</b>
+            태블릿이 어느 도서관 와이파이에 있든, 항상 같은 넷버드 고정 주소로
+            이 서버에 <b>10분마다 접속(체크인)</b>합니다.</p>
+            <p>관리자에서 누르는 지시(영상 보내기·업데이트·재부팅 등)는 서버에 쌓였다가
+            태블릿이 접속할 때 전달되고, 급한 지시는 즉시 깨워 몇 초 안에 반영됩니다.
+            화면이 꺼진 태블릿은 절전 때문에 접속이 늦어질 수 있습니다(밤에는 아침까지).</p>
+            <p>태블릿의 등록·연결 상태는 <b>넷버드 콘솔</b>에서 봅니다. 기기 행에
+            <b>VPN 미지정</b> 경고가 보이면 "재부팅하면 원격이 끊기는 기기"라는 뜻이니
+            앱을 최신으로 업데이트하세요.</p>
+          </span>
+        </span>
+        <a class="btn ghost sm" href="https://app.netbird.io/peers" target="_blank" rel="noopener noreferrer">넷버드 콘솔 ↗</a>
         <a class="btn ghost sm" href="">새로고침</a>
         <a class="btn ghost sm" href="/logout">로그아웃</a>
       </div>
