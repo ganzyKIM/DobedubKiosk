@@ -12,7 +12,7 @@
    platform-tools 라는 폴더가 나옵니다. 그 폴더를 통째로 여기에 넣으세요.
 
    이렇게 되면 정상:
-      두비덥키오스크_운영\platform-tools\adb.exe
+      DobedubKiosk-Operations\platform-tools\adb.exe
 
 
 2) netbird-*.apk          ← 태블릿용 넷버드 (원격 관리에 필요)
