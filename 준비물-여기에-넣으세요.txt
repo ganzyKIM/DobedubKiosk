@@ -1,0 +1,39 @@
+﻿여기에 넣어야 하는 준비물 안내
+==============================
+
+이 폴더에 아래 3가지를 넣어야 태블릿 세팅이 완전히 자동으로 됩니다.
+자세한 방법은 [회사_인수인계_가이드.md] 의 1부를 보세요.
+
+
+1) platform-tools 폴더    ← 태블릿과 USB로 대화하는 도구 (필수)
+
+   https://developer.android.com/tools/releases/platform-tools
+   에서 "Download SDK Platform-Tools for Windows" 를 받아 압축을 풀면
+   platform-tools 라는 폴더가 나옵니다. 그 폴더를 통째로 여기에 넣으세요.
+
+   이렇게 되면 정상:
+      두비덥키오스크_운영\platform-tools\adb.exe
+
+
+2) netbird-*.apk          ← 태블릿용 넷버드 (원격 관리에 필요)
+
+   https://github.com/netbirdio/android-client/releases
+   에서 Assets 를 펼쳐 .apk 파일을 받아 여기에 넣으세요. (약 200MB)
+   파일 이름이 netbird- 로 시작해야 합니다.
+   검증된 버전: v0.5.0
+
+
+3) netbird-setup-key.txt  ← 태블릿 자동 등록용 열쇠 (원격 관리에 필요)
+
+   https://app.netbird.io/setup-keys 에서 kiosk-fleet 키를 만들고,
+   화면에 나온 긴 문자열만 메모장에 붙여넣어
+   netbird-setup-key.txt 라는 이름으로 여기에 저장하세요.
+
+   * 만들 때 Auto-assign groups 에 kiosk 를 반드시 넣으세요.
+   * 이 파일은 비밀번호와 같습니다. 메일/메신저로 돌리지 마세요.
+
+
+ADBKeyboard.apk 는 이미 들어 있으니 따로 받을 필요 없습니다.
+
+2), 3) 이 없어도 세팅은 진행되지만 넷버드 등록만 건너뜁니다
+(= 그 태블릿은 도서관에 나가면 원격 관리가 안 됩니다).
