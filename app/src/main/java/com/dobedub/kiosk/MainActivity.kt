@@ -1,5 +1,6 @@
 package com.dobedub.kiosk
 
+import android.util.Log
 import android.media.AudioManager
 import android.os.Bundle
 import android.os.Handler
@@ -48,6 +49,7 @@ private const val UPDATE_INITIAL_DELAY_MS = 20_000L
 /** 프로비저닝 인텐트 엑스트라 키(태블릿 세팅 스크립트에서 도서관 주소/기관명 전달). */
 private const val EXTRA_START_URL = "kiosk_start_url"
 private const val EXTRA_LABEL = "kiosk_label"
+private const val EXTRA_FLEET_URL = "kiosk_fleet_url"
 
 class MainActivity : ComponentActivity() {
 
@@ -180,15 +182,27 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * 프로비저닝(태블릿 세팅 스크립트)에서 넘긴 도서관 주소/기관명을 이 기기 설정에 반영한다.
-     *   am start ... --es kiosk_start_url "https://splib.dobedub.com/home" --es kiosk_label "splib"
+     * 프로비저닝(태블릿 세팅 스크립트)에서 넘긴 도서관 주소/기관명/함대 서버 주소를 반영한다.
+     *   am start ... --es kiosk_start_url "https://splib.dobedub.com/home" \
+     *                --es kiosk_label "splib" --es kiosk_fleet_url "http://100.x.y.z:8090"
      * 도서관마다 서브도메인이 다르므로 기기별로 이 값을 심는다. 허용 도메인은 URL 호스트에서 자동 도출.
+     *
+     * `kiosk_fleet_url` 은 **운영 주체가 여럿일 때 필수**다. 빌드 기본값(BuildConfig)은 하나뿐이라
+     * 개발 서버 주소가 박혀 나가는데, 회사 운영 PC 로 넘긴 태블릿이 그 값을 물면 **엉뚱한 서버로
+     * 체크인한다**. 세팅 스크립트가 그 PC 의 넷버드 주소를 여기로 심어 기기별로 갈라놓는다.
+     * 도달 확인은 스크립트가 이미 하고 넘기므로(넣기 전 /health 확인) 여기서는 저장만 한다 —
+     * 세팅 시점엔 태블릿의 넷버드가 아직 안 붙었을 수 있어 기기에서 재검증하면 헛되이 실패한다.
      */
     private fun handleProvisioningIntent(intent: android.content.Intent?) {
         val url = intent?.getStringExtra(EXTRA_START_URL)?.trim()
         val label = intent?.getStringExtra(EXTRA_LABEL)?.trim()
-        if (url.isNullOrBlank() && label.isNullOrBlank()) return
+        val fleetUrl = intent?.getStringExtra(EXTRA_FLEET_URL)?.trim()
+        if (url.isNullOrBlank() && label.isNullOrBlank() && fleetUrl.isNullOrBlank()) return
         lifecycleScope.launch {
+            if (!fleetUrl.isNullOrBlank()) {
+                app.settingsRepository.setFleetServerUrl(fleetUrl)
+                Log.i("Kiosk", "프로비저닝: 함대 서버 주소 = $fleetUrl")
+            }
             if (!url.isNullOrBlank()) {
                 app.settingsRepository.setStartUrl(url)
                 android.net.Uri.parse(url).authority?.takeIf { it.isNotBlank() }?.let { host ->

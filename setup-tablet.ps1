@@ -35,6 +35,10 @@ param(
     [string]$AdminReceiver = "com.dobedub.kiosk/.kiosk.AdminReceiver",
     [string]$LibrarySubdomain = "",   # 예: splib  → https://splib.dobedub.com/home (기기마다 다름)
     [string]$StartUrl      = "",       # 전체 URL 직접 지정(있으면 서브도메인보다 우선)
+    # 이 태블릿이 체크인할 함대 서버 주소. **운영 주체가 여럿이면 반드시 지정한다** —
+    # APK 에 박힌 빌드 기본값은 개발 서버라, 비워두면 회사 태블릿이 개발 서버로 붙는다.
+    # 비워두고 실행하면 이 PC 의 넷버드 주소를 찾아 제안한다.
+    [string]$FleetServerUrl = "",
     [switch]$SkipVideo,
     [switch]$SkipWebView,
     [switch]$SkipDebloat,
@@ -246,6 +250,52 @@ if ($LibrarySubdomain -and $LibrarySubdomain -notmatch '^https?://') {
 }
 if ($StartUrl) { Ok "시작 주소: $StartUrl  (기관 라벨: $LibLabel)" }
 else { Warn "주소 미입력 — 앱 기본값(https://splib.dobedub.com/home) 유지" }
+
+# ---------- 2.6 함대(관리) 서버 주소 ----------
+# 이 태블릿이 "어느 관리자 PC 로 체크인할지"를 정한다. APK 안의 기본값은 빌드 시점의
+# 개발 서버 주소이므로, 운영 PC 로 넘길 태블릿은 **반드시 여기서 덮어써야** 한다.
+# (안 하면 회사 태블릿이 개발 서버로 붙어, 운영 대시보드에 안 보인다.)
+Head "2.6 관리 서버 주소"
+if (-not $FleetServerUrl) {
+    $nbIpLocal = ""
+    $nbExe = @("$env:ProgramFiles\NetBird\netbird.exe", "netbird") |
+        Where-Object { (Get-Command $_ -ErrorAction SilentlyContinue) -or (Test-Path $_) } | Select-Object -First 1
+    if ($nbExe) {
+        try {
+            $nbIpLocal = (& $nbExe status 2>$null | Select-String 'NetBird IP:' |
+                          ForEach-Object { ($_ -split ':')[1].Trim().Split('/')[0] } | Select-Object -First 1)
+        } catch { $nbIpLocal = "" }
+    }
+    if ($nbIpLocal) {
+        $suggest = "http://${nbIpLocal}:8090"
+        Info "이 PC 의 넷버드 주소를 찾았습니다: $suggest"
+        $ans = Read-Host "  이 주소로 설정할까요? (엔터=예 / 다른 주소를 직접 입력)"
+        $FleetServerUrl = if ([string]::IsNullOrWhiteSpace($ans)) { $suggest } else { $ans.Trim() }
+    } else {
+        Warn "이 PC 에서 넷버드 주소를 찾지 못했습니다(넷버드 미설치 또는 미연결)."
+        Write-Host "  관리자-실행.bat 이 알려주는 '태블릿용 주소(다른 망, NetBird)' 를 넣으세요." -ForegroundColor Gray
+        $FleetServerUrl = (Read-Host "  함대 서버 주소 (비우면 APK 기본값 = 개발 서버)").Trim()
+    }
+}
+if ($FleetServerUrl) {
+    # 넣기 전에 이 PC 에서 실제로 응답하는지 확인한다 — 오타를 그대로 심으면 그 태블릿은
+    # 영영 대시보드에 안 나타나고, 원인도 현장에 가야 알 수 있다.
+    $reachable = $false
+    try {
+        $r = Invoke-WebRequest -Uri "$FleetServerUrl/health" -TimeoutSec 5 -UseBasicParsing
+        $reachable = ($r.Content.Trim() -eq 'ok')
+    } catch { $reachable = $false }
+    if ($reachable) {
+        Ok "관리 서버 주소: $FleetServerUrl  (응답 확인됨)"
+    } else {
+        Warn "그 주소가 이 PC 에서 응답하지 않습니다: $FleetServerUrl"
+        Warn "관리자-실행.bat 으로 서버를 먼저 켰는지 확인하세요. 그래도 진행하면 주소는 심되 검증은 안 된 상태입니다."
+        $go = Read-Host "  그래도 이 주소로 진행할까요? (Y/N)"
+        if ($go -notmatch '^[Yy]') { $FleetServerUrl = "" ; Warn "주소 미설정 — APK 기본값(개발 서버)을 쓰게 됩니다" }
+    }
+} else {
+    Warn "주소 미설정 — APK 기본값(개발 서버)을 씁니다. 운영 태블릿이라면 나중에 반드시 바꾸세요."
+}
 
 # ---------- 3. WebView 업데이트 ----------
 if (-not $SkipWebView) {
@@ -501,8 +551,13 @@ Head "8. 앱 실행 및 검증"
 if ($StartUrl) {
     # 도서관 주소/기관명을 앱에 전달해 이 기기 설정으로 저장시킨다.
     # 값에 공백이 있어도 안전하도록 device 셸용 단일따옴표로 감싼다(am 인자는 공백에서 쪼개짐).
-    Adb shell "am start -n $PackageName/.MainActivity --es kiosk_start_url '$StartUrl' --es kiosk_label '$LibLabel'" | Out-Null
+    $extra = if ($FleetServerUrl) { " --es kiosk_fleet_url '$FleetServerUrl'" } else { "" }
+    Adb shell "am start -n $PackageName/.MainActivity --es kiosk_start_url '$StartUrl' --es kiosk_label '$LibLabel'$extra" | Out-Null
     Ok "도서관 주소를 기기에 설정: $StartUrl"
+    if ($FleetServerUrl) { Ok "관리 서버 주소를 기기에 설정: $FleetServerUrl" }
+} elseif ($FleetServerUrl) {
+    Adb shell "am start -n $PackageName/.MainActivity --es kiosk_fleet_url '$FleetServerUrl'" | Out-Null
+    Ok "관리 서버 주소를 기기에 설정: $FleetServerUrl"
 } else {
     Adb shell am start -n "$PackageName/.MainActivity" | Out-Null
 }

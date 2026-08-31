@@ -81,6 +81,7 @@ WEBVIEW_APK=""
 VIDEO_DIR="$SCRIPT_DIR/.."
 PACKAGE_NAME="com.dobedub.kiosk"
 ADMIN_RECEIVER="com.dobedub.kiosk/.kiosk.AdminReceiver"
+FLEET_SERVER_URL="${FLEET_SERVER_URL:-}"
 LIBRARY_SUBDOMAIN=""
 START_URL=""
 SKIP_VIDEO=0
@@ -268,6 +269,41 @@ if [ -n "$START_URL" ]; then
   ok "시작 주소: $START_URL  (기관 라벨: $LIB_LABEL)"
 else
   warn "주소 미입력 — 앱 기본값(https://splib.dobedub.com/home) 유지"
+fi
+
+# ---------- 2.6 함대(관리) 서버 주소 ----------
+# 이 태블릿이 "어느 관리자 PC 로 체크인할지"를 정한다. APK 안의 기본값은 빌드 시점의
+# 개발 서버 주소이므로, 운영 PC 로 넘길 태블릿은 **반드시 여기서 덮어써야** 한다.
+head_ "2.6 관리 서버 주소"
+if [ -z "$FLEET_SERVER_URL" ] && [ -t 0 ]; then
+  nb_ip_local=""
+  if command -v netbird >/dev/null 2>&1; then
+    nb_ip_local="$(netbird status 2>/dev/null | awk '/NetBird IP:/{print $3}' | cut -d/ -f1 | head -1)"
+  fi
+  if [ -n "$nb_ip_local" ]; then
+    suggest="http://${nb_ip_local}:8090"
+    info "이 PC 의 넷버드 주소를 찾았습니다: $suggest"
+    read -r -p "  이 주소로 설정할까요? (엔터=예 / 다른 주소 입력): " ans
+    if [ -z "$ans" ]; then FLEET_SERVER_URL="$suggest"; else FLEET_SERVER_URL="$ans"; fi
+  else
+    warn "이 PC 에서 넷버드 주소를 찾지 못했습니다(넷버드 미설치 또는 미연결)."
+    read -r -p "  함대 서버 주소 (비우면 APK 기본값 = 개발 서버): " FLEET_SERVER_URL
+  fi
+fi
+if [ -n "$FLEET_SERVER_URL" ]; then
+  # 넣기 전에 이 PC 에서 실제로 응답하는지 확인한다 — 오타를 심으면 그 태블릿은 영영
+  # 대시보드에 안 나타나고, 원인도 현장에 가야 알 수 있다.
+  if [ "$(curl -s -m 5 "$FLEET_SERVER_URL/health" 2>/dev/null)" = "ok" ]; then
+    ok "관리 서버 주소: $FLEET_SERVER_URL  (응답 확인됨)"
+  else
+    warn "그 주소가 이 PC 에서 응답하지 않습니다: $FLEET_SERVER_URL"
+    if [ -t 0 ]; then
+      read -r -p "  그래도 이 주소로 진행할까요? (Y/N) " go
+      case "$go" in [Yy]*) ;; *) FLEET_SERVER_URL=""; warn "주소 미설정 — APK 기본값(개발 서버)을 쓰게 됩니다" ;; esac
+    fi
+  fi
+else
+  warn "주소 미설정 — APK 기본값(개발 서버)을 씁니다. 운영 태블릿이라면 나중에 반드시 바꾸세요."
 fi
 
 # ---------- 3. WebView 업데이트 ----------
@@ -539,8 +575,14 @@ head_ "8. 앱 실행 및 검증"
 if [ -n "$START_URL" ]; then
   # 도서관 주소/기관명을 앱에 전달해 이 기기 설정으로 저장시킨다.
   # 값에 공백이 있어도 안전하도록 device 셸용 단일따옴표로 감싼다(am 인자는 공백에서 쪼개짐).
-  adb_run shell "am start -n $PACKAGE_NAME/.MainActivity --es kiosk_start_url '$START_URL' --es kiosk_label '$LIB_LABEL'"
+  fleet_extra=""
+  [ -n "$FLEET_SERVER_URL" ] && fleet_extra=" --es kiosk_fleet_url '$FLEET_SERVER_URL'"
+  adb_run shell "am start -n $PACKAGE_NAME/.MainActivity --es kiosk_start_url '$START_URL' --es kiosk_label '$LIB_LABEL'$fleet_extra"
   ok "도서관 주소를 기기에 설정: $START_URL"
+  [ -n "$FLEET_SERVER_URL" ] && ok "관리 서버 주소를 기기에 설정: $FLEET_SERVER_URL"
+elif [ -n "$FLEET_SERVER_URL" ]; then
+  adb_run shell "am start -n $PACKAGE_NAME/.MainActivity --es kiosk_fleet_url '$FLEET_SERVER_URL'"
+  ok "관리 서버 주소를 기기에 설정: $FLEET_SERVER_URL"
 else
   adb_run shell am start -n "$PACKAGE_NAME/.MainActivity"
 fi
