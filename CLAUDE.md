@@ -188,7 +188,7 @@ getUserMedia 제약 강제: autoGainControl=true, echoCancellation=true, noiseSu
 앞으로 개발선은 31 부터, 납품선은 28~30 을 쓴다.
 같은 태블릿에 두 계열을 섞어 올리지 않는다.
 
-## 현재 상태 (2026-08-22) — v2.5.4 / `versionCode=31`
+## 현재 상태 (2026-08-23) — v2.5.5 / `versionCode=32`
 
 `versionCode`는 절대 되돌리지 말 것(업데이트 트리거 기준). versionName은 v1.0에서 한 번
 리셋했고 이후 계속 올라간다.
@@ -444,6 +444,18 @@ getUserMedia 제약 강제: autoGainControl=true, echoCancellation=true, noiseSu
   - play/pause/ended 는 버블링하지 않지만 **캡처 단계 리스너에는 도달** — document 하나로
     전 요소를 덮는다. Web Audio 재생 대비 `AudioBufferSourceNode.start` 도 후킹.
   - 단위 테스트 5개(`MediaPlaybackStateTest`).
+- v2.5.5 **운영 인수인계 준비 — 함대 주소를 프로비저닝으로 심는다**.
+  회사 운영 PC 와 개발 맥이 **각각 다른 함대**가 되면서, APK 에 박힌 빌드 기본값
+  (`fleetServerUrl`=개발 맥) 하나로는 갈라놓을 수 없게 됐다. 세팅 스크립트가 기기별로
+  주소를 심는다: `am start ... --es kiosk_fleet_url 'http://100.x.y.z:8090'`.
+  - 앱: `EXTRA_FLEET_URL` 처리 추가. **기기에서 재검증하지 않는다** — 세팅 시점엔 태블릿
+    넷버드가 아직 안 붙었을 수 있어 헛되이 실패한다. 도달 확인은 **스크립트가** 심기 전에
+    `/health` 로 하고 넘긴다(역할 분리).
+  - 스크립트 쌍: 2.6 단계 신설. 이 PC 의 넷버드 IP 를 `netbird status` 로 찾아 제안 →
+    `/health` 확인 → 프로비저닝에 실어 보냄. 미설정이면 "개발 서버로 붙는다"고 경고.
+  - 윈도우 납품 필수품을 개발선에도 포팅: `.gitattributes`(*.bat/*.ps1 CRLF 고정 —
+    맥에서 뽑은 꾸러미의 LF 배치를 cmd.exe 가 잘못 파싱한다), `서버-준비.bat`.
+  - `회사_인수인계_가이드.md` 신설(비개발자용 4부 구성: 준비/세팅/운영/문제해결).
 - v1.6 서버 주소 자동 찾기 + 축약 입력, 배포 이력 10개 페이지네이션.
   이때 `network_security_config`를 **평문 HTTP 전면 허용**으로 바꿨다 — 사설 IP 대역
   와일드카드를 지원하지 않아 선별 허용이 불가능. 웹뷰는 코드로 도메인 화이트리스트가
