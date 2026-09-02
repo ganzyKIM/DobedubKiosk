@@ -142,7 +142,10 @@ for (const stmt of [
   `ALTER TABLE devices ADD COLUMN fleet_url TEXT`,
   // 기기가 보고한 always-on VPN 패키지. NULL/빈 값이면 그 기기는 다음 재부팅에 원격
   // 관리가 끊긴다 — 재부팅 전에 알아채기 위한 유일한 신호(v2.5.2).
-  `ALTER TABLE devices ADD COLUMN always_on_vpn TEXT`
+  `ALTER TABLE devices ADD COLUMN always_on_vpn TEXT`,
+  // 기기가 보고한 공인 IP. 좌표가 실내에서 안 갱신되는 대신 "옮겨졌다"를 확실히 알려준다.
+  // 서버는 NetBird 오버레이 주소만 보이므로 기기 보고 없이는 알 수 없다.
+  `ALTER TABLE devices ADD COLUMN public_ip TEXT`
 ]) {
   try { db.exec(stmt); } catch (e) { /* already exists */ }
 }
@@ -171,11 +174,11 @@ const stmtUpsert = db.prepare(`
 INSERT INTO devices (device_id, model, serial, version_code, version_name, battery,
                      kiosk_locked, start_url, app_label, ip, videos, contact,
                      ap_ssid, ap_bssid, lat, lng, loc_accuracy, located_at,
-                     checkin_interval_ms, fleet_url, always_on_vpn, first_seen, last_seen, checkin_count)
+                     checkin_interval_ms, fleet_url, always_on_vpn, public_ip, first_seen, last_seen, checkin_count)
 VALUES (@device_id, @model, @serial, @version_code, @version_name, @battery,
         @kiosk_locked, @start_url, @app_label, @ip, @videos, @contact,
         @ap_ssid, @ap_bssid, @lat, @lng, @loc_accuracy, @located_at,
-        @checkin_interval_ms, @fleet_url, @always_on_vpn, @now, @now, 1)
+        @checkin_interval_ms, @fleet_url, @always_on_vpn, @public_ip, @now, @now, 1)
 ON CONFLICT(device_id) DO UPDATE SET
   model        = excluded.model,
   serial       = excluded.serial,
@@ -192,6 +195,9 @@ ON CONFLICT(device_id) DO UPDATE SET
   -- always_on_vpn 은 COALESCE 하지 않는다. '지정이 풀렸다'는 사실 자체가 경고 대상이라
   -- 마지막으로 알던 값을 남겨두면 위험을 가리게 된다.
   always_on_vpn = excluded.always_on_vpn,
+  -- 공인 IP 도 COALESCE 하지 않는다. 옛 IP 가 남으면 "옮겨졌다"를 못 알아챈다 —
+  -- 이 값의 존재 이유가 바로 변화 감지이므로 마지막 보고를 그대로 반영한다.
+  public_ip     = excluded.public_ip,
   -- 위치 관련 값은 있을 때만 갱신한다. 위치를 못 잡은 체크인이 한 번 끼었다고 마지막으로
   -- 알던 설치 위치까지 지워버리면, 오히려 정보가 줄어든다.
   ap_ssid      = COALESCE(excluded.ap_ssid, devices.ap_ssid),
@@ -272,6 +278,7 @@ function recordCheckin(d) {
       ? d.checkinIntervalMs : null,
     fleet_url: d.fleetUrl || null,
     always_on_vpn: d.alwaysOnVpn || null,
+    public_ip: d.publicIp || null,
     now
   });
 

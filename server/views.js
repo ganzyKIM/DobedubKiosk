@@ -603,8 +603,28 @@ function devicesTab({ devices, release, media, stats, thresholds, builtinManual 
     // 기기 식별: 기관명이 주인공, 접속 중인 AP 가 "어느 도서관인지"의 실질적 단서다.
     const place = [];
     if (d.ap_ssid) place.push(esc(d.ap_ssid));
+    // 공인 IP — 좌표와 달리 망을 옮기면 반드시 바뀌므로 "이 기기가 이동했다"가 드러난다.
+    // 클릭하면 그 IP 의 대략 위치를 조회하는 페이지가 열린다(서버에 외부 의존성을 두지 않는다).
+    if (d.public_ip) {
+      place.push(
+        `<a class="mono" href="https://ipinfo.io/${encodeURIComponent(d.public_ip)}"` +
+        ` target="_blank" rel="noopener noreferrer"` +
+        ` title="기기가 보고한 공인 IP 입니다. 망을 옮기면 바뀌므로 이동 여부를 알 수 있습니다. 클릭하면 대략 위치를 조회합니다.">` +
+        `${esc(d.public_ip)}</a>`
+      );
+    }
     if (d.lat != null && d.lng != null) {
-      place.push(`<a href="https://www.google.com/maps?q=${d.lat},${d.lng}" target="_blank" rel="noopener noreferrer">지도</a>`);
+      // 좌표에는 **반드시 나이를 함께** 보여준다. 실내에서는 GPS 가 안 잡혀 며칠씩 묵은
+      // 값이 그대로 남는데(서버가 COALESCE 로 보존한다), 나이가 없으면 운영자가 이걸
+      // 현위치로 읽고 "태블릿이 엉뚱한 도서관에 있다"고 오해한다.
+      const ageMs = d.located_at ? Date.now() - d.located_at : null;
+      const stale = ageMs == null || ageMs > 6 * 60 * 60 * 1000;   // 6시간 넘으면 흐리게
+      const when = d.located_at ? relTime(d.located_at) : '시각 미상';
+      place.push(
+        `<a href="https://www.google.com/maps?q=${d.lat},${d.lng}" target="_blank" rel="noopener noreferrer"` +
+        ` title="${esc(when)}에 잡은 좌표입니다. 실내에서는 갱신되지 않을 수 있어 현위치와 다를 수 있습니다.">지도</a>` +
+        `<span class="${stale ? 'muted' : ''}" style="margin-left:4px">${esc(when)}</span>`
+      );
     }
 
     return `<tr>

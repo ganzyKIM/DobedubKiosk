@@ -206,6 +206,31 @@ async function main() {
     assert.ok(html.includes('원리'), '설명 문구 없음');
   });
 
+  await test('공인 IP 보고 → 저장되고 대시보드에 표시(이동 감지)', async () => {
+    // 좌표는 실내에서 안 바뀌지만 공인 IP 는 망을 옮기면 반드시 바뀐다.
+    // 서버는 NetBird 오버레이 주소(100.x)만 보이므로 기기가 직접 보고해야 한다.
+    await checkin(DEV, 21, { publicIp: '175.223.10.33' });
+    let html = await (await fetch(`${BASE}/dashboard`, { headers: { Cookie: cookie } })).text();
+    assert.ok(html.includes('175.223.10.33'), '공인 IP 가 대시보드에 없음');
+
+    // 다른 망으로 옮기면 값이 갱신되어야 한다(옛 IP 가 남으면 이동을 못 알아챈다)
+    await checkin(DEV, 21, { publicIp: '1.2.3.4' });
+    html = await (await fetch(`${BASE}/dashboard`, { headers: { Cookie: cookie } })).text();
+    assert.ok(html.includes('1.2.3.4'), '새 공인 IP 가 반영되지 않음');
+    assert.ok(!html.includes('175.223.10.33'), '옛 공인 IP 가 그대로 남아 있음');
+  });
+
+  await test('지도 링크에 좌표 나이가 함께 표시된다 (현위치로 오해 방지)', async () => {
+    // 좌표는 실내에서 갱신이 안 돼 며칠 묵기도 한다. 나이 표시가 없으면 운영자가
+    // "지도"를 현위치로 읽고 태블릿이 엉뚱한 도서관에 있다고 오해한다.
+    const old = Date.now() - 26 * 60 * 60 * 1000;   // 26시간 전 좌표
+    await checkin(DEV, 21, { lat: 37.4877, lng: 126.8934, locAccuracy: 100, locatedAt: old });
+    const html = await (await fetch(`${BASE}/dashboard`, { headers: { Cookie: cookie } })).text();
+    assert.ok(html.includes('maps?q=37.4877'), '지도 링크 자체가 없음');
+    assert.ok(/지도<\/a>\s*<span[^>]*>[^<]*전<\/span>/.test(html) || html.includes('지도 (1일 전)'),
+      '좌표 나이 표시가 없음: ' + (html.match(/.{0,80}maps\?q.{0,120}/) || [''])[0]);
+  });
+
   await test('fleet-rev: 로그인 필요 + 체크인마다 증가(대시보드 자동 새로고침 신호)', async () => {
     const noAuth = await fetch(`${BASE}/api/fleet-rev`, { redirect: 'manual' });
     assert.equal(noAuth.status, 302, '비로그인인데 200 이면 안 됨');

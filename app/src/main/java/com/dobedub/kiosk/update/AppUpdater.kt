@@ -274,6 +274,8 @@ class AppUpdater(private val context: Context) {
                 put("apSsid", ap.ssid)
                 put("apBssid", ap.bssid)
             }
+            // 공인 IP. 서버는 NetBird 오버레이 주소(100.x)만 보이므로 기기가 직접 알려준다.
+            com.dobedub.kiosk.admin.PublicIpHelper.lastKnown()?.let { put("publicIp", it) }
             LocationHelper.lastKnown(context)?.let { fix ->
                 put("lat", fix.lat)
                 put("lng", fix.lng)
@@ -283,6 +285,8 @@ class AppUpdater(private val context: Context) {
         }
         // 다음 체크인이 최신 좌표를 싣도록 갱신만 걸어둔다(결과는 기다리지 않는다).
         LocationHelper.refreshInBackground(context)
+        // 공인 IP 도 같은 방식으로 — 실내에서 좌표가 안 잡히는 기기의 "여기 옮겨졌다" 신호다.
+        com.dobedub.kiosk.admin.PublicIpHelper.refreshInBackground()
 
         val conn = (URL("$baseUrl/api/checkin").openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
