@@ -207,8 +207,7 @@ async function main() {
   });
 
   await test('공인 IP 보고 → 저장되고 대시보드에 표시(이동 감지)', async () => {
-    // 좌표는 실내에서 안 바뀌지만 공인 IP 는 망을 옮기면 반드시 바뀐다.
-    // 서버는 NetBird 오버레이 주소(100.x)만 보이므로 기기가 직접 보고해야 한다.
+    // 공인 IP 는 기기가 보고한다(서버는 NetBird 오버레이 주소만 본다).
     await checkin(DEV, 21, { publicIp: '175.223.10.33' });
     let html = await (await fetch(`${BASE}/dashboard`, { headers: { Cookie: cookie } })).text();
     assert.ok(html.includes('175.223.10.33'), '공인 IP 가 대시보드에 없음');
@@ -221,8 +220,7 @@ async function main() {
   });
 
   await test('지도 링크에 좌표 나이가 함께 표시된다 (현위치로 오해 방지)', async () => {
-    // 좌표는 실내에서 갱신이 안 돼 며칠 묵기도 한다. 나이 표시가 없으면 운영자가
-    // "지도"를 현위치로 읽고 태블릿이 엉뚱한 도서관에 있다고 오해한다.
+    // 좌표는 며칠 묵기도 하므로 나이 표시가 있어야 한다.
     const old = Date.now() - 26 * 60 * 60 * 1000;   // 26시간 전 좌표
     await checkin(DEV, 21, { lat: 37.4877, lng: 126.8934, locAccuracy: 100, locatedAt: old });
     const html = await (await fetch(`${BASE}/dashboard`, { headers: { Cookie: cookie } })).text();
@@ -250,10 +248,8 @@ async function main() {
   });
 
   await test('always-on VPN 보고가 대시보드에 보인다 (재부팅 생존 사전 경고)', async () => {
-    // 미지정 상태로 보고 → 대시보드에 경고가 떠야 한다. 이게 없으면 "재부팅하면 끊기는
-    // 기기"를 재부팅해 본 뒤에야 알게 된다(실제로 그렇게 QA 한 사이클을 날렸다).
-    // 주의: 헤더의 원리 설명 팝오버에도 "VPN 미지정"이라는 글귀가 항상 있다 —
-    // 경고 '칩'(</span> 로 닫힘)만 정확히 겨냥해야 설명문과 헛갈리지 않는다.
+    // 미지정 상태로 보고하면 대시보드에 경고가 떠야 한다.
+    // 헤더 설명 팝오버에도 같은 글귀가 있으므로 경고 칩(</span> 로 닫힘)만 본다.
     await checkin(DEV, 21, { alwaysOnVpn: null });
     const warn = await (await fetch(`${BASE}/dashboard`, { headers: { Cookie: cookie } })).text();
     assert.ok(warn.includes('VPN 미지정</span>'), '미지정 경고 칩이 대시보드에 없음');

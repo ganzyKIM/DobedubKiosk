@@ -187,11 +187,9 @@ class MainActivity : ComponentActivity() {
      *                --es kiosk_label "splib" --es kiosk_fleet_url "http://100.x.y.z:8090"
      * 도서관마다 서브도메인이 다르므로 기기별로 이 값을 심는다. 허용 도메인은 URL 호스트에서 자동 도출.
      *
-     * `kiosk_fleet_url` 은 **운영 주체가 여럿일 때 필수**다. 빌드 기본값(BuildConfig)은 하나뿐이라
-     * 개발 서버 주소가 박혀 나가는데, 회사 운영 PC 로 넘긴 태블릿이 그 값을 물면 **엉뚱한 서버로
-     * 체크인한다**. 세팅 스크립트가 그 PC 의 넷버드 주소를 여기로 심어 기기별로 갈라놓는다.
-     * 도달 확인은 스크립트가 이미 하고 넘기므로(넣기 전 /health 확인) 여기서는 저장만 한다 —
-     * 세팅 시점엔 태블릿의 넷버드가 아직 안 붙었을 수 있어 기기에서 재검증하면 헛되이 실패한다.
+     * `kiosk_fleet_url`: 함대 서버가 여럿(개발/운영)이라 빌드 기본값 하나로는 갈라놓을 수 없어
+     * 세팅 스크립트가 기기별로 심는다. 도달 확인은 스크립트가 하고 여기서는 저장만 한다 —
+     * 세팅 시점엔 기기의 NetBird 가 아직 안 붙었을 수 있다.
      */
     private fun handleProvisioningIntent(intent: android.content.Intent?) {
         val url = intent?.getStringExtra(EXTRA_START_URL)?.trim()
@@ -263,9 +261,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun returnToHomeIfIdle() {
-        // 감상 중(동영상 재생, 웹뷰 오디오 재생)은 무조작으로 치지 않는다 — 이 판정이 터치만
-        // 봐서, 무조작 시간(기본 5분)보다 긴 영상을 얌전히 보던 아이가 재생 도중 홈으로
-        // 튕겼다(서비스_완성도_검토.md §1-1). 타이머만 다시 걸고 물러난다.
+        // 감상 중(영상 재생, 웹뷰 오디오)은 무조작으로 치지 않는다. 터치만 보면 긴 영상을
+        // 보던 중에 홈으로 튕긴다.
         if (MediaPlaybackState.isWatching()) {
             resetIdleTimer()
             return

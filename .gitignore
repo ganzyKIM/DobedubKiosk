@@ -28,3 +28,6 @@ server/data/
 # NetBird 태블릿 등록용 사전 인증 키 — 공개 저장소에 절대 커밋 금지.
 # 유출 시 대시보드(Settings > Setup Keys)에서 revoke 하고 새 키로 교체할 것.
 netbird-setup-key.txt
+
+# 로컬 개발 도구 컨텍스트 (리포에 포함하지 않음)
+CLAUDE.local.md

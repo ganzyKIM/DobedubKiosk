@@ -11,9 +11,11 @@ import android.provider.Settings
 import android.util.Log
 import com.dobedub.kiosk.BuildConfig
 import com.dobedub.kiosk.admin.LocationHelper
+import com.dobedub.kiosk.admin.PublicIpHelper
 import com.dobedub.kiosk.admin.WifiHelper
 import com.dobedub.kiosk.data.KioskSettings
 import com.dobedub.kiosk.data.KioskSettingsRepository
+import com.dobedub.kiosk.kiosk.KioskManager
 import com.dobedub.kiosk.manual.ManualRepository
 import com.dobedub.kiosk.video.VideoRepository
 import android.os.SystemClock
@@ -27,6 +29,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 함대 관리 서버와 통신해 (1) 기기 상태를 체크인하고 (2) 새 버전이 있으면 조용히(또는
@@ -42,10 +45,10 @@ class AppUpdater(private val context: Context) {
     private val settings = KioskSettingsRepository(context)
     private val videoRepo = VideoRepository(context)
     private val manualRepo = ManualRepository(context)
-    private val kiosk by lazy { com.dobedub.kiosk.kiosk.KioskManager(context) }
+    private val kiosk by lazy { KioskManager(context) }
 
     /** 확인/설치/수신이 겹쳐 돌지 않게 하는 재진입 가드(연타·자동주기와 수동 버튼 충돌 방지). */
-    private val busy = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val busy = AtomicBoolean(false)
 
     data class Manifest(
         val update: Boolean,
@@ -264,9 +267,7 @@ class AppUpdater(private val context: Context) {
             // 현재 쓰는 함대 서버 주소 — setFleetUrl 원격 지시의 완료 판정 근거(서버는 이
             // 값이 override 와 같아질 때까지 지시를 계속 내린다).
             put("fleetUrl", baseUrl)
-            // 재부팅 후 원격 관리가 살아 돌아올지를 미리 알려주는 유일한 신호.
-            // 지정이 안 돼 있으면(null) 그 기기는 다음 재부팅에 연락이 끊긴다 — 재부팅
-            // 전에 대시보드에서 보이게 하려고 보고한다(v2.5.2 사고의 재발 방지).
+            // always-on VPN 지정 여부. null 이면 재부팅 후 원격 관리가 끊기므로 대시보드가 경고한다.
             put("alwaysOnVpn", kiosk.alwaysOnVpnPackage() ?: JSONObject.NULL)
             // 이 태블릿이 어느 도서관에 있는지 가려내기 위한 정보.
             // 접속 AP 는 항상 잡히고, 좌표는 NLP(Google 위치 정확도)가 켜진 기기에서만 나온다.
@@ -274,8 +275,8 @@ class AppUpdater(private val context: Context) {
                 put("apSsid", ap.ssid)
                 put("apBssid", ap.bssid)
             }
-            // 공인 IP. 서버는 NetBird 오버레이 주소(100.x)만 보이므로 기기가 직접 알려준다.
-            com.dobedub.kiosk.admin.PublicIpHelper.lastKnown()?.let { put("publicIp", it) }
+            // 공인 IP. 체크인이 NetBird 를 경유하므로 서버는 오버레이 주소만 본다.
+            PublicIpHelper.lastKnown()?.let { put("publicIp", it) }
             LocationHelper.lastKnown(context)?.let { fix ->
                 put("lat", fix.lat)
                 put("lng", fix.lng)
@@ -285,8 +286,7 @@ class AppUpdater(private val context: Context) {
         }
         // 다음 체크인이 최신 좌표를 싣도록 갱신만 걸어둔다(결과는 기다리지 않는다).
         LocationHelper.refreshInBackground(context)
-        // 공인 IP 도 같은 방식으로 — 실내에서 좌표가 안 잡히는 기기의 "여기 옮겨졌다" 신호다.
-        com.dobedub.kiosk.admin.PublicIpHelper.refreshInBackground()
+        PublicIpHelper.refreshInBackground()
 
         val conn = (URL("$baseUrl/api/checkin").openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"

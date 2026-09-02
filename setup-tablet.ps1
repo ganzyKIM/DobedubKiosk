@@ -35,9 +35,8 @@ param(
     [string]$AdminReceiver = "com.dobedub.kiosk/.kiosk.AdminReceiver",
     [string]$LibrarySubdomain = "",   # 예: splib  → https://splib.dobedub.com/home (기기마다 다름)
     [string]$StartUrl      = "",       # 전체 URL 직접 지정(있으면 서브도메인보다 우선)
-    # 이 태블릿이 체크인할 함대 서버 주소. **운영 주체가 여럿이면 반드시 지정한다** —
-    # APK 에 박힌 빌드 기본값은 개발 서버라, 비워두면 회사 태블릿이 개발 서버로 붙는다.
-    # 비워두고 실행하면 이 PC 의 넷버드 주소를 찾아 제안한다.
+    # 이 태블릿이 체크인할 함대 서버 주소. 비워두면 이 PC 의 넷버드 주소를 찾아 제안한다.
+    # APK 기본값은 개발 서버이므로 운영 태블릿은 반드시 지정한다.
     [string]$FleetServerUrl = "",
     [switch]$SkipVideo,
     [switch]$SkipWebView,
@@ -252,9 +251,7 @@ if ($StartUrl) { Ok "시작 주소: $StartUrl  (기관 라벨: $LibLabel)" }
 else { Warn "주소 미입력 — 앱 기본값(https://splib.dobedub.com/home) 유지" }
 
 # ---------- 2.6 함대(관리) 서버 주소 ----------
-# 이 태블릿이 "어느 관리자 PC 로 체크인할지"를 정한다. APK 안의 기본값은 빌드 시점의
-# 개발 서버 주소이므로, 운영 PC 로 넘길 태블릿은 **반드시 여기서 덮어써야** 한다.
-# (안 하면 회사 태블릿이 개발 서버로 붙어, 운영 대시보드에 안 보인다.)
+# 이 태블릿이 체크인할 관리자 PC 를 정한다. APK 기본값은 개발 서버라 운영 태블릿은 여기서 덮어쓴다.
 Head "2.6 관리 서버 주소"
 if (-not $FleetServerUrl) {
     $nbIpLocal = ""
@@ -278,8 +275,7 @@ if (-not $FleetServerUrl) {
     }
 }
 if ($FleetServerUrl) {
-    # 넣기 전에 이 PC 에서 실제로 응답하는지 확인한다 — 오타를 그대로 심으면 그 태블릿은
-    # 영영 대시보드에 안 나타나고, 원인도 현장에 가야 알 수 있다.
+    # 심기 전에 실제로 응답하는지 확인한다. 오타를 심으면 그 태블릿은 대시보드에 나타나지 않는다.
     $reachable = $false
     try {
         $r = Invoke-WebRequest -Uri "$FleetServerUrl/health" -TimeoutSec 5 -UseBasicParsing

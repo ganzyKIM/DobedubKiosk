@@ -140,11 +140,9 @@ for (const stmt of [
   `ALTER TABLE devices ADD COLUMN fleet_url_override TEXT`,
   // 기기가 체크인마다 보고하는 "현재 쓰는" 함대 서버 주소(완료 판정 근거)
   `ALTER TABLE devices ADD COLUMN fleet_url TEXT`,
-  // 기기가 보고한 always-on VPN 패키지. NULL/빈 값이면 그 기기는 다음 재부팅에 원격
-  // 관리가 끊긴다 — 재부팅 전에 알아채기 위한 유일한 신호(v2.5.2).
+  // 기기가 보고한 always-on VPN 패키지. 비어 있으면 재부팅 후 원격 관리가 끊긴다.
   `ALTER TABLE devices ADD COLUMN always_on_vpn TEXT`,
-  // 기기가 보고한 공인 IP. 좌표가 실내에서 안 갱신되는 대신 "옮겨졌다"를 확실히 알려준다.
-  // 서버는 NetBird 오버레이 주소만 보이므로 기기 보고 없이는 알 수 없다.
+  // 기기가 보고한 공인 IP(이동 감지용). 체크인이 NetBird 를 경유해 서버는 알 수 없다.
   `ALTER TABLE devices ADD COLUMN public_ip TEXT`
 ]) {
   try { db.exec(stmt); } catch (e) { /* already exists */ }
@@ -192,11 +190,9 @@ ON CONFLICT(device_id) DO UPDATE SET
   videos       = excluded.videos,
   contact      = excluded.contact,
   fleet_url    = COALESCE(excluded.fleet_url, devices.fleet_url),
-  -- always_on_vpn 은 COALESCE 하지 않는다. '지정이 풀렸다'는 사실 자체가 경고 대상이라
-  -- 마지막으로 알던 값을 남겨두면 위험을 가리게 된다.
+  -- always_on_vpn 은 COALESCE 하지 않는다. 지정이 풀린 상태가 곧 경고 대상이다.
   always_on_vpn = excluded.always_on_vpn,
-  -- 공인 IP 도 COALESCE 하지 않는다. 옛 IP 가 남으면 "옮겨졌다"를 못 알아챈다 —
-  -- 이 값의 존재 이유가 바로 변화 감지이므로 마지막 보고를 그대로 반영한다.
+  -- 공인 IP 는 이동 감지용이므로 COALESCE 하지 않는다.
   public_ip     = excluded.public_ip,
   -- 위치 관련 값은 있을 때만 갱신한다. 위치를 못 잡은 체크인이 한 번 끼었다고 마지막으로
   -- 알던 설치 위치까지 지워버리면, 오히려 정보가 줄어든다.

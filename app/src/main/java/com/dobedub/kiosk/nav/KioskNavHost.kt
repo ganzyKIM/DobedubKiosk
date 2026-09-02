@@ -30,6 +30,7 @@ import com.dobedub.kiosk.video.VideoRepository
 import com.dobedub.kiosk.video.ui.VideoListScreen
 import com.dobedub.kiosk.video.ui.VideoPlayerScreen
 import com.dobedub.kiosk.web.RestrictedWebViewScreen
+import com.dobedub.kiosk.update.DownloadState
 
 @Composable
 fun KioskNavHost(
@@ -126,7 +127,7 @@ fun KioskNavHost(
         composable(Routes.VIDEO_LIST) {
             // 다운로드 상태가 변할 때마다(특히 완료로 항목이 빠질 때) 다시 스캔한다 —
             // 원격으로 방금 받은 영상이 화면을 나갔다 들어오지 않아도 바로 목록에 뜬다.
-            val transfers by com.dobedub.kiosk.update.DownloadState.transfers.collectAsState()
+            val transfers by DownloadState.transfers.collectAsState()
             LaunchedEffect(transfers) {
                 videos = VideoRepository(context).listVideos()
             }

@@ -37,11 +37,8 @@ class KioskManager(private val context: Context) {
      * 멱등: 이미 지정돼 있으면 다시 지정해도 무해. NetBird 미설치 기기(구형 세팅)에서는
      * 아무것도 하지 않는다.
      *
-     * ⚠ **어떤 경로로 끝났는지 반드시 로그를 남긴다.** 처음 구현(v2.4.1)은 "설치 안 됨"과
-     * "Device Owner 아님"을 조용히 return 했는데, 실제로는 **매니페스트에 `<queries>` 가
-     * 없어 Android 11 패키지 가시성 필터가 넷버드를 숨긴 것**이라 getPackageInfo 가
-     * NameNotFoundException 을 던지고 있었다. 로그가 없어 "코드가 있으니 됐겠지"로
-     * 넘어갔고, 재부팅 QA 를 한 사이클 통째로 날렸다.
+     * 모든 종료 경로가 로그를 남긴다. 초기 구현은 조용히 return 해서, 매니페스트 <queries>
+     * 누락으로 getPackageInfo 가 실패하고 있던 것을 한참 알아채지 못했다.
      */
     fun ensureAlwaysOnVpn() {
         if (!isDeviceOwner()) {
@@ -69,11 +66,7 @@ class KioskManager(private val context: Context) {
         }
     }
 
-    /**
-     * 지금 always-on VPN 이 실제로 지정돼 있는지. 체크인 payload 에 실어 백오피스에서
-     * 보이게 한다 — 이번 사고처럼 "지정된 줄 알았는데 아니었다"를 원격에서 알아채려면
-     * 기기가 사실을 보고하는 수밖에 없다(재부팅 후에야 드러나면 이미 늦다).
-     */
+    /** 현재 always-on VPN 으로 지정된 패키지. 체크인에 실어 대시보드가 미지정 기기를 경고한다. */
     fun alwaysOnVpnPackage(): String? = try {
         if (isDeviceOwner()) dpm.getAlwaysOnVpnPackage(adminComponent) else null
     } catch (e: Exception) {

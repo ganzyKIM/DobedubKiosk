@@ -282,12 +282,9 @@ app.get('/api/poke', (req, res) => {
 // 사라져도 다음 보고가 다시 채운다). 대시보드는 /api/transfers 를 폴링해 퍼센티지를 그린다.
 const transfers = new Map();   // "deviceId|kind|name" → { …, at }
 
-// ── 대시보드 자동 새로고침 신호 ──
-// "무언가 끝났는데 화면은 옛날 것"을 없앤다. 의미 있는 상태 변화(체크인, 전송 완료/실패,
-// 관리자 조작)마다 1씩 올리고, 대시보드는 2초 폴링에서 이 값이 렌더 시점과 달라지면
-// 스스로 새로고침한다(모달이 열려 있거나 입력 중이면 미룬다 — views.js SCRIPT).
-// 인메모리로 충분하다: 서버가 재시작되면 값이 리셋되지만, 그 순간 열려 있던 대시보드는
-// rev 불일치를 보고 어차피 한 번 새로고침하게 되므로 오히려 안전하다.
+// 대시보드 자동 새로고침용 상태 개정 번호. 체크인·전송 완료/실패·관리자 조작마다 올리고,
+// 대시보드는 렌더 시점 값과 달라지면 새로고침한다(views.js). 재시작으로 리셋돼도 열려 있던
+// 화면이 한 번 새로고침될 뿐이라 인메모리로 둔다.
 let fleetRev = 1;
 function bumpRev() { fleetRev++; }
 
@@ -301,8 +298,7 @@ app.post('/api/progress', (req, res) => {
   const name = String(b.name || '').slice(0, 200);
   const status = ['downloading', 'done', 'failed'].includes(b.status) ? b.status : 'downloading';
   if (!deviceId || !name) return res.status(400).json({ error: 'deviceId/name required' });
-  // 완료/실패로 '바뀌는 순간'만 새로고침 신호를 준다 — downloading 진행 보고(1.5초마다)로
-  // 매번 새로고침하면 화면이 계속 깜빡인다. 퍼센트는 기존 폴링이 라이브로 그린다.
+  // 완료/실패 전이만 새로고침 신호. 진행률은 폴링이 그리므로 매번 올리면 깜빡인다.
   const prev = transfers.get(`${deviceId}|${kind}|${name}`);
   if (status !== 'downloading' && (!prev || prev.status !== status)) bumpRev();
   transfers.set(`${deviceId}|${kind}|${name}`, {
@@ -365,9 +361,9 @@ app.post('/api/checkin', (req, res) => {
       checkinIntervalMs: Number(b.checkinIntervalMs),
       // 기기가 현재 쓰는 함대 서버 주소(v2.5+) — setFleetUrl 지시의 완료 판정 근거
       fleetUrl: typeof b.fleetUrl === 'string' ? b.fleetUrl.slice(0, 200) : null,
-      // 기기가 보고한 always-on VPN 패키지(v2.5.2+). null 이면 재부팅 시 원격 관리가 끊긴다.
+      // 기기가 보고한 always-on VPN 패키지. null 이면 재부팅 후 원격 관리가 끊긴다.
       alwaysOnVpn: typeof b.alwaysOnVpn === 'string' ? b.alwaysOnVpn.slice(0, 100) : null,
-      // 기기가 알아낸 공인 IP(v2.5.6+). 이동 감지용 — 서버는 오버레이 주소만 보인다.
+      // 기기가 보고한 공인 IP(이동 감지용).
       publicIp: typeof b.publicIp === 'string' ? b.publicIp.slice(0, 45) : null,
       // 설치 장소 식별용. AP는 항상 잡히지만 좌표는 NLP 켜진 기기에서만 온다.
       apSsid: typeof b.apSsid === 'string' ? b.apSsid.slice(0, 64) : null,
@@ -376,7 +372,7 @@ app.post('/api/checkin', (req, res) => {
       locAccuracy: Number(b.locAccuracy), locatedAt: Number(b.locatedAt),
       ip: req.ip
     });
-  bumpRev();   // 체크인 = 버전/인벤토리/보고값이 갱신됐을 수 있다
+  bumpRev();
   } catch (e) {
     console.error('checkin error', e);
     return res.status(500).json({ error: 'server error' });
@@ -522,7 +518,7 @@ app.get('/media/:id/thumb', (req, res) => {
 
 // 폼 POST 뒤에는 보고 있던 탭으로 돌려보낸다. 로그인처럼 referer 가 대시보드가 아니면 기본 탭.
 function backToReferer(req, res) {
-  bumpRev();   // 관리자 폼 조작 = 상태 변화. 조작한 창은 redirect 로, 다른 창은 rev 로 갱신된다.
+  bumpRev();   // 관리자 조작. 다른 창에 열린 대시보드도 갱신되게 한다.
   const ref = req.get('referer');
   res.redirect(ref && ref.includes('/dashboard') ? ref : '/dashboard');
 }

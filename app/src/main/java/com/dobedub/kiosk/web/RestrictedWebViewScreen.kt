@@ -163,15 +163,17 @@ private const val MIC_LIMIT_ATTACK_S = 0.010 // 5→10ms: 어절 시작 트랜�
 private const val MIC_LIMIT_RELEASE_S = 0.15 // 0.10→0.15: 어절 끝에서 게인이 튀어오르지 않게
 
 /**
- * 페이지 안 미디어 재생 감지 → 네이티브 하트비트. 무조작 홈 복귀가 "감상 중"을 알 수 있는
- * 유일한 통로다(웹뷰는 재생 상태를 밖으로 알려주지 않는다).
- *  - play/pause/ended 는 버블링하지 않지만 **캡처 단계** 리스너에는 도달한다 — document
- *    하나로 모든 <audio>/<video> 를 덮는다.
- *  - 사이트가 Web Audio 로 재생하는 경우를 위해 AudioBufferSourceNode.start 도 잡는다
- *    (대사 한 줄 = start() 한 번이라, 줄마다 하트비트가 갱신된다).
- *  - 재생 중일 때만 15초 간격 하트비트 — 페이지가 죽으면 신호도 같이 죽고, 네이티브 쪽
- *    lease(45초)가 스스로 풀린다(MediaPlaybackState 참조).
+ * 페이지의 미디어 재생을 감지해 네이티브에 하트비트를 보낸다(무조작 홈 복귀 유예용).
+ * play/pause/ended 는 버블링하지 않지만 캡처 단계 리스너에는 오므로 document 하나로 덮고,
+ * Web Audio 재생은 AudioBufferSourceNode.start 를 후킹해 잡는다. 재생 중일 때만 15초마다
+ * 보내고, 페이지가 죽으면 네이티브 lease 가 스스로 만료된다(MediaPlaybackState).
  */
+/** 페이지 JS(MEDIA_WATCH_JS)가 호출하는 네이티브 수신구. @JavascriptInterface 메서드만 노출된다. */
+private class KioskNativeBridge {
+    @JavascriptInterface
+    fun mediaHeartbeat() = MediaPlaybackState.noteWebMediaHeartbeat()
+}
+
 private val MEDIA_WATCH_JS = """
 (function(){
   if (window.__dbdMediaWatch) return; window.__dbdMediaWatch = true;
@@ -302,7 +304,6 @@ fun RestrictedWebViewScreen(
     onUserInteraction: () -> Unit
 ) {
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
-    // 웹뷰 화면을 떠나면 "감상 중" lease 를 즉시 해제한다(만료 45초를 기다릴 이유가 없다).
     DisposableEffect(Unit) {
         onDispose { MediaPlaybackState.clearWebMedia() }
     }
@@ -411,12 +412,7 @@ fun RestrictedWebViewScreen(
                         // 사이트가 모듈 로드 때 getUserMedia 참조를 미리 바인딩해두면 onPageFinished
                         // 주입은 이미 늦고(실기기 CDP로 확인함), iframe 안 코드도 못 덮는다.
                         // addDocumentStartJavaScript 는 모든 프레임에 페이지 스크립트보다 먼저 실행된다.
-                        // 페이지 JS(MEDIA_WATCH_JS)가 부르는 하트비트 수신구.
-                        // @JavascriptInterface 붙은 메서드만 노출된다.
-                        addJavascriptInterface(object {
-                            @JavascriptInterface
-                            fun mediaHeartbeat() = MediaPlaybackState.noteWebMediaHeartbeat()
-                        }, "KioskNative")
+                        addJavascriptInterface(KioskNativeBridge(), "KioskNative")
                         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
                             runCatching {
                                 WebViewCompat.addDocumentStartJavaScript(this, MEDIA_WATCH_JS, setOf("*"))

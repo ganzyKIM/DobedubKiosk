@@ -149,8 +149,7 @@ input[type=file]{padding:6px;font-size:12px}
 form.inline{display:inline}
 
 /* ── 호버 설명 팝오버 ────────────────────────────────────── */
-/* 클릭할 것(버튼)과 읽을 것(설명)을 분리한다 — 설명은 ? 배지에 올리면 나온다.
-   JS 없이 :hover/:focus-within 만 쓴다(키보드 접근 포함). */
+/* ? 배지에 올리면 나오는 설명. :hover/:focus-within 만 쓴다. */
 .pop{position:relative;display:inline-flex;align-items:center}
 .pop-badge{
   width:26px;height:26px;border-radius:50%;border:1px solid var(--line);
@@ -254,11 +253,8 @@ function openModal(id){
       el.textContent = '수신중 ' + mine.length + '개 ' + (tot > 0 ? Math.floor(rec / tot * 100) + '%' : '…');
     });
   }
-  // ── 자동 새로고침 ──
-  // 서버의 상태 개정 번호(/api/fleet-rev)가 이 페이지를 그린 시점(window.FLEET_REV)과
-  // 달라지면 — 체크인 도착, 전송 완료, 다른 창의 관리자 조작 — 화면을 새로 그린다.
-  // 단, 관리자가 뭔가 하는 중이면 절대 끊지 않는다: 모달이 열려 있거나, 입력칸에
-  // 포커스가 있거나, 쓰다 만 값(파일 선택 포함)이 남아 있으면 다음 기회로 미룬다.
+  // 자동 새로고침: 서버 개정 번호가 렌더 시점(window.FLEET_REV)과 달라지면 새로 그린다.
+  // 모달이 열려 있거나 입력 중(포커스, 쓰다 만 값, 파일 선택)이면 미룬다.
   function busyEditing(){
     if (document.querySelector('dialog[open]')) return true;
     var a = document.activeElement;
@@ -593,9 +589,7 @@ function devicesTab({ devices, release, media, stats, thresholds, builtinManual 
     const manual = d.manualImages || [];
     const waiting = (d.pendingPushes || []).length + (d.pendingDeletes || []).length;
 
-    // 재부팅하면 원격 관리가 끊길 기기를 **재부팅 전에** 드러낸다. 기기가 always-on VPN
-    // 지정 사실을 보고하지 않으면(구버전이거나 지정 실패) 이 칩이 뜬다 — 이 경고가 없어서
-    // "코드는 넣었으니 됐겠지" 하고 넘어갔다가 재부팅 QA 를 한 사이클 날렸다.
+    // always-on VPN 미지정 기기 경고. 재부팅하면 원격 관리가 끊기는 기기를 미리 드러낸다.
     const vpnChip = d.always_on_vpn
       ? ''
       : '<span class="chip warn" title="재부팅하면 넷버드가 자동으로 안 붙어 원격 관리가 끊깁니다. 앱 v2.5.2 이상으로 업데이트하세요.">VPN 미지정</span>';
@@ -603,8 +597,7 @@ function devicesTab({ devices, release, media, stats, thresholds, builtinManual 
     // 기기 식별: 기관명이 주인공, 접속 중인 AP 가 "어느 도서관인지"의 실질적 단서다.
     const place = [];
     if (d.ap_ssid) place.push(esc(d.ap_ssid));
-    // 공인 IP — 좌표와 달리 망을 옮기면 반드시 바뀌므로 "이 기기가 이동했다"가 드러난다.
-    // 클릭하면 그 IP 의 대략 위치를 조회하는 페이지가 열린다(서버에 외부 의존성을 두지 않는다).
+    // 공인 IP. 망을 옮기면 바뀌므로 이동을 알 수 있다. 클릭하면 외부 조회 페이지로 간다.
     if (d.public_ip) {
       place.push(
         `<a class="mono" href="https://ipinfo.io/${encodeURIComponent(d.public_ip)}"` +
@@ -614,9 +607,7 @@ function devicesTab({ devices, release, media, stats, thresholds, builtinManual 
       );
     }
     if (d.lat != null && d.lng != null) {
-      // 좌표에는 **반드시 나이를 함께** 보여준다. 실내에서는 GPS 가 안 잡혀 며칠씩 묵은
-      // 값이 그대로 남는데(서버가 COALESCE 로 보존한다), 나이가 없으면 운영자가 이걸
-      // 현위치로 읽고 "태블릿이 엉뚱한 도서관에 있다"고 오해한다.
+      // 좌표는 실내에서 며칠씩 묵은 값이 남으므로 나이를 함께 표시한다.
       const ageMs = d.located_at ? Date.now() - d.located_at : null;
       const stale = ageMs == null || ageMs > 6 * 60 * 60 * 1000;   // 6시간 넘으면 흐리게
       const when = d.located_at ? relTime(d.located_at) : '시각 미상';

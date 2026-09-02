@@ -175,7 +175,7 @@ Windows 상시 구동은 [NSSM](https://nssm.cc/) 등으로 `node server.js` 를
 - `GET /api/latest` — 현재 매니페스트(디버그용, 기기 컨텍스트가 없어 `promptUpdate`는 항상 false).
 - `GET /download/app.apk` — 현재 활성 배포 APK.
 - `GET /media/:id/download` — 영상 자료실 파일(공개, Range 지원 — 대용량 이어받기 가능).
-  ⚠ Content-Disposition 은 RFC 5987(`filename*=UTF-8''`)로 싣는다 — HTTP 헤더는
+  Content-Disposition 은 RFC 5987(`filename*=UTF-8''`)로 싣는다 — HTTP 헤더는
   ISO-8859-1 만 허용이라 한글 파일명을 그대로 넣으면 500이 난다(실제로 그랬다).
 
 대시보드 폼이 호출하는 관리용 라우트(로그인 필요): `/release/upload`, `/release/rollback`,
@@ -249,7 +249,7 @@ powershell -ExecutionPolicy Bypass -File .\start-tunnel.ps1
 **앱을 다시 설치할 필요는 없다** — 서버 주소는 런타임 설정값이다. 실기기(HA1EHJC2)로
 재부팅 → 자동 체크인 → 강제 업데이트 확인창 표시까지 검증 완료.
 
-> ⚠ 이 명령이 만드는 것은 **빠른 터널(quick tunnel)**이라 cloudflared를 재시작할 때마다
+> 이 명령이 만드는 것은 **빠른 터널(quick tunnel)**이라 cloudflared를 재시작할 때마다
 > 주소가 바뀐다. 태블릿이 이미 현장에 나간 뒤 주소가 바뀌면 원격으로 고칠 방법이 없다.
 > 실제 배포 전엔 반드시 **named tunnel**(고정 서브도메인) 또는 `kiosk.dobedub.com` DNS를
 > 이 서버로 향하게 하는 방식으로 전환할 것 — 후자는 앱 기본값이 이미 이 주소라 태블릿

@@ -12,8 +12,7 @@
   함대는 상업 용도 → 약관 위반. 유료 전환 시 $8/인/월(연 12만원+).
 - 재검토 대안: Cloudflare 명명 터널(도메인 필요), NetBird(무료 5인/100대, 상업 금지
   조항 없음), ZeroTier(무료 10대로 축소 — 탈락), VPS/포트포워딩(관리·보안 부담).
-- 개발자 권고는 "명명 터널 + 저가 도메인"이었으나 **사용자 결정으로 NetBird 확정**
-  (도메인 없이 진행).
+- "명명 터널 + 저가 도메인"도 검토했으나 도메인 없이 진행하는 NetBird 로 확정.
 
 ## 1. 현재 구성 (실측 완료)
 
@@ -27,7 +26,7 @@
 - **계정**: devops@dobedub.com (회사 공용). 무료 플랜 5사용자/100피어.
 - **그룹**: 태블릿 = `kiosk` (setup key가 자동 배정), 서버 = `fleet-server`.
 - **Setup key**: `kiosk-fleet` (reusable·무만료·무제한). 대시보드 Settings > Setup Keys.
-  ⚠ 유출 시 대시보드에서 즉시 revoke — 기존 등록 기기는 영향 없음.
+  유출 시 대시보드에서 즉시 revoke — 기존 등록 기기는 영향 없음.
 - **정책(ACL)**: `kiosk → fleet-server TCP 8090`만 허용, Default(전부 허용) **비활성**.
   태블릿끼리·태블릿→서버의 다른 포트 전부 차단됨.
 - **맥 데몬**: brew `netbirdio/tap/netbird`, `netbird service install`로 상시 구동.
@@ -38,11 +37,11 @@
 
 | 항목 | 결과 |
 |---|---|
-| 태블릿 체크인 (넷버드 경유) | ✅ 서버가 소스 IP `100.109.230.149`로 수신 |
+| 태블릿 체크인 (넷버드 경유) | 서버가 소스 IP `100.109.230.149`로 수신 |
 | 연결 유형 | **P2P 직결** (LAN 후보로 직결, 레이턴시 6ms) |
-| 즉시 깨우기(long-poll wake) | ✅ **1초** (넷버드 경유) |
-| 좁힌 정책 하 통신 | ✅ 정상 (8090 외 차단) |
-| Lock Task(키오스크 잠금) 공존 | ✅ 잠금 상태에서 1초 체크인, VPN 유지 |
+| 즉시 깨우기(long-poll wake) | **1초** (넷버드 경유) |
+| 좁힌 정책 하 통신 | 정상 (8090 외 차단) |
+| Lock Task(키오스크 잠금) 공존 | 잠금 상태에서 1초 체크인, VPN 유지 |
 | 배터리 최적화 예외 | `dumpsys deviceidle whitelist +io.netbird.client` 적용됨 |
 
 ## 3. 태블릿 등록 절차 (신규 기기 세팅 시)
@@ -53,7 +52,7 @@ adb로 자동화 가능한 절차 (이번에 실제 사용한 방법):
 1. `netbird-v0.5.0.apk` 설치 (netbirdio/android-client GitHub 릴리스, 208MB)
 2. 앱 실행 → Continue → 메뉴(☰) → **Change Server** → Yes(초기화 동의)
 3. Server: `https://api.netbird.io` / **+ Add this device with a setup key** → 키 입력 → Change
-   - ⚠ **한글 IME가 켜져 있으면 `adb input text`가 자모로 깨진다.**
+   - **한글 IME가 켜져 있으면 `adb input text`가 자모로 깨진다.**
      ADBKeyboard(브로드캐스트 IME)를 설치해 `ADB_INPUT_TEXT`로 주입하고 끝나면 Gboard 복원.
 4. 메인 화면 로고 탭 → 시스템 VPN 동의창 **확인**
 5. 대시보드 Peers에서 등록 확인(그룹 `kiosk` 자동). 서버 주소는 **앱 v2.5+ 면 설정
@@ -66,7 +65,7 @@ adb로 자동화 가능한 절차 (이번에 실제 사용한 방법):
 > 스크립트 옆에 두면 된다: `netbird-*.apk`, `ADBKeyboard.apk`, `netbird-setup-key.txt`
 > (키 파일은 gitignore — 공개 리포에 커밋 금지). 이미 등록된 기기(100.x 보유)는
 > 자동으로 건너뛰고, 키오스크 잠금 상태면 해제 후 재실행을 안내한다.
-> ⚠ 스크립트의 전체 등록 흐름은 수동 절차를 그대로 옮긴 것이며, 실기기 종주는 수동으로
+> 스크립트의 전체 등록 흐름은 수동 절차를 그대로 옮긴 것이며, 실기기 종주는 수동으로
 > 했고 스크립트 자체는 멱등(스킵) 경로만 실검증됨 — 다음 신규 기기 세팅이 첫 완주가 된다.
 > `.ps1` 판은 맥에서 문법만 정적 검사 — 윈도우 실검증은 납품 시점에.
 
