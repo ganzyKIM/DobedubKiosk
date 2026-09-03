@@ -28,7 +28,7 @@
 #>
 
 param(
-    [string]$ApkPath       = "",   # 비우면 릴리스 APK 우선, 없으면 디버그 APK 자동 선택
+    [string]$ApkPath       = "",   # 비우면 자동 선택: 스크립트 옆 dobedub-kiosk-*.apk(운영 패키지) → 릴리스 빌드 → 디버그 빌드
     [string]$WebViewApk    = "",                       # 비우면 상위 폴더에서 자동 탐색
     [string]$VideoDir      = "$PSScriptRoot\..",       # 이 폴더(하위 포함)에서 *.mp4 검색
     [string]$PackageName   = "com.dobedub.kiosk",
@@ -297,7 +297,8 @@ if ($FleetServerUrl) {
 if (-not $SkipWebView) {
     Head "3. Android System WebView 업데이트"
     if (-not $WebViewApk) {
-        $wv = Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot "..") -Filter "com.google.android.webview*.apk" -ErrorAction SilentlyContinue | Select-Object -First 1
+        # 스크립트 옆(운영 패키지) 또는 상위 폴더(개발 PC 관례)
+        $wv = Get-ChildItem -LiteralPath $PSScriptRoot, (Join-Path $PSScriptRoot "..") -Filter "com.google.android.webview*.apk" -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($wv) { $WebViewApk = $wv.FullName }
     }
     if ($WebViewApk -and (Test-Path -LiteralPath $WebViewApk)) {
@@ -311,7 +312,8 @@ if (-not $SkipWebView) {
             Warn "WebView 업데이트 실패 (계속 진행): $($r.Text.Trim())"
         }
     } else {
-        Warn "WebView APK 를 찾지 못해 건너뜁니다. (필요 시 상위 폴더에 com.google.android.webview*.apk 배치)"
+        Info "WebView APK 가 동봉되지 않아 건너뜁니다 — 운영 패키지에는 포함하지 않으므로 정상입니다."
+        Info "(기기의 기본 WebView 로 동작합니다. 갱신이 필요하면 com.google.android.webview*.apk 를 이 폴더에 두고 재실행)"
     }
 } else {
     Head "3. WebView 업데이트 (건너뜀: -SkipWebView)"
@@ -319,11 +321,28 @@ if (-not $SkipWebView) {
 
 # ---------- 4. 키오스크 APK 설치 ----------
 Head "4. 키오스크 앱 설치"
-# APK 자동 선택: 릴리스(고정 키 서명, 자동 업데이트 호환) 우선, 없으면 디버그로 폴백.
+# APK 자동 선택 순서:
+#   1) 스크립트 옆의 dobedub-kiosk-*.apk — 운영 패키지(DobedubKiosk-Operations)가 두는 자리.
+#      여러 개면 파일명의 버전이 가장 높은 것. (make-package.sh 가 이 이름으로 넣는다)
+#   2) app\build\outputs\apk\release\app-release.apk — 개발 PC 의 릴리스 빌드(고정 키 서명)
+#   3) app\build\outputs\apk\debug\app-debug.apk   — 개발 PC 의 디버그 빌드(자동 업데이트 비호환)
+# 2026-09-03 실제 사고: 운영 패키지는 1) 자리에 넣고 스크립트는 2)/3) 만 봐서 회사 PC 에서
+# "APK 를 찾을 수 없습니다" 로 멈췄다. 이 순서와 make-package.sh 를 함께 유지할 것.
+$apkFromPackage = $false
+function Get-ApkVersionKey($file) {
+    # "dobedub-kiosk-v2.5.6.apk" → [version]2.5.6 ; 형식이 어긋나면 0.0 으로 취급(정렬만 뒤로 밀림)
+    $v = $file.BaseName -replace '^dobedub-kiosk-v?', '' -replace '[^0-9.].*$', ''
+    try { return [version]$v } catch { return [version]"0.0" }
+}
 if (-not $ApkPath) {
+    $pkgApk = Get-ChildItem -LiteralPath $PSScriptRoot -Filter "dobedub-kiosk-*.apk" -ErrorAction SilentlyContinue |
+              Sort-Object { Get-ApkVersionKey $_ } -Descending | Select-Object -First 1
     $relApk = Join-Path $PSScriptRoot "app\build\outputs\apk\release\app-release.apk"
     $dbgApk = Join-Path $PSScriptRoot "app\build\outputs\apk\debug\app-debug.apk"
-    if (Test-Path -LiteralPath $relApk) {
+    if ($pkgApk) {
+        $ApkPath = $pkgApk.FullName
+        $apkFromPackage = $true
+    } elseif (Test-Path -LiteralPath $relApk) {
         $ApkPath = $relApk
     } elseif (Test-Path -LiteralPath $dbgApk) {
         $ApkPath = $dbgApk
@@ -332,12 +351,17 @@ if (-not $ApkPath) {
     }
 }
 if (-not $ApkPath -or -not (Test-Path -LiteralPath $ApkPath)) {
-    Die "APK 를 찾을 수 없습니다.`n       먼저 빌드하세요:  gradlew assembleRelease  (또는 assembleDebug)"
+    Die "설치할 APK 를 찾을 수 없습니다.`n       운영 패키지라면: dobedub-kiosk-v*.apk 파일이 태블릿-세팅.bat 과 같은 폴더에 있어야 합니다.`n         (찾은 위치: $PSScriptRoot — 파일이 지워졌거나 이름이 바뀌지 않았는지 확인)`n       개발 PC 라면: gradlew assembleRelease 로 빌드하세요 (app\build\outputs\apk\release\app-release.apk)."
 }
 $apkBuilt = (Get-Item -LiteralPath $ApkPath).LastWriteTime
-Info "설치: $(Split-Path $ApkPath -Leaf)  (빌드시각 $($apkBuilt.ToString('MM-dd HH:mm')))"
-if (((Get-Date) - $apkBuilt).TotalHours -gt 12) {
-    Warn "이 APK는 12시간 이상 전에 빌드됐습니다. 최신 코드가 맞는지 확인하세요(필요시 gradlew assembleRelease 재빌드)."
+if ($apkFromPackage) {
+    Info "설치: $(Split-Path $ApkPath -Leaf)  (운영 패키지 동봉 APK)"
+} else {
+    Info "설치: $(Split-Path $ApkPath -Leaf)  (빌드시각 $($apkBuilt.ToString('MM-dd HH:mm')))"
+    # 빌드 산출물을 직접 쓰는 개발 PC 에서만 의미 있는 경고. 패키지 APK 는 항상 오래됐으므로 내지 않는다.
+    if (((Get-Date) - $apkBuilt).TotalHours -gt 12) {
+        Warn "이 APK는 12시간 이상 전에 빌드됐습니다. 최신 코드가 맞는지 확인하세요(필요시 gradlew assembleRelease 재빌드)."
+    }
 }
 $r = Adb install -r "$ApkPath"
 if ($r.Code -ne 0 -and $r.Text -notmatch "Success") {

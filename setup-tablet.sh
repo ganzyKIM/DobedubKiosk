@@ -9,7 +9,7 @@
 #   ./setup-tablet.sh --skip-netbird      # NetBird 설치·등록 생략
 #   ./setup-tablet.sh --force-video       # 같은 영상이 있어도 다시 push
 #   ./setup-tablet.sh --subdomain splib   # 도서관 주소를 묻지 않고 지정
-#   ./setup-tablet.sh --apk <경로>        # 설치할 APK 직접 지정
+#   ./setup-tablet.sh --apk <경로>        # 설치할 APK 직접 지정 (비우면 스크립트 옆 dobedub-kiosk-*.apk → 릴리스 → 디버그 순)
 #
 # 수행 순서
 #   0. adb 탐색  1. 연결 대기  2. 사전 점검  2.5 도서관 주소  3. WebView 업데이트
@@ -308,7 +308,8 @@ fi
 if [ "$SKIP_WEBVIEW" -eq 0 ]; then
   head_ "3. Android System WebView 업데이트"
   if [ -z "$WEBVIEW_APK" ]; then
-    WEBVIEW_APK="$(find "$SCRIPT_DIR/.." -maxdepth 1 -name 'com.google.android.webview*.apk' 2>/dev/null | head -1)"
+    # 스크립트 옆(운영 패키지) 또는 상위 폴더(개발 PC 관례)
+    WEBVIEW_APK="$(find "$SCRIPT_DIR" "$SCRIPT_DIR/.." -maxdepth 1 -name 'com.google.android.webview*.apk' 2>/dev/null | head -1)"
   fi
   if [ -n "$WEBVIEW_APK" ] && [ -f "$WEBVIEW_APK" ]; then
     info "설치: $(basename "$WEBVIEW_APK")"
@@ -321,7 +322,8 @@ if [ "$SKIP_WEBVIEW" -eq 0 ]; then
       warn "WebView 업데이트 실패 (계속 진행): $ADB_OUT"
     fi
   else
-    warn "WebView APK 를 찾지 못해 건너뜁니다. (필요 시 상위 폴더에 com.google.android.webview*.apk 배치)"
+    info "WebView APK 가 동봉되지 않아 건너뜁니다 — 운영 패키지에는 포함하지 않으므로 정상입니다."
+    info "(기기의 기본 WebView 로 동작합니다. 갱신이 필요하면 com.google.android.webview*.apk 를 이 폴더에 두고 재실행)"
   fi
 else
   head_ "3. WebView 업데이트 (건너뜀: --skip-webview)"
@@ -329,11 +331,25 @@ fi
 
 # ---------- 4. 키오스크 APK 설치 ----------
 head_ "4. 키오스크 앱 설치"
-# APK 자동 선택: 릴리스(고정 키 서명, 자동 업데이트 호환) 우선, 없으면 디버그로 폴백.
+# APK 자동 선택 순서 (setup-tablet.ps1 4단계와 한 쌍):
+#   1) 스크립트 옆의 dobedub-kiosk-*.apk — 운영 패키지(DobedubKiosk-Operations)가 두는 자리.
+#      여러 개면 파일명의 버전이 가장 높은 것. (make-package.sh 가 이 이름으로 넣는다)
+#   2) app/build/outputs/apk/release/app-release.apk — 개발 PC 의 릴리스 빌드(고정 키 서명)
+#   3) app/build/outputs/apk/debug/app-debug.apk   — 개발 PC 의 디버그 빌드(자동 업데이트 비호환)
+# 2026-09-03 실제 사고: 운영 패키지는 1) 자리에 넣고 스크립트는 2)/3) 만 봐서 회사 PC 에서
+# "APK 를 찾을 수 없습니다" 로 멈췄다. 이 순서와 make-package.sh 를 함께 유지할 것.
+APK_FROM_PACKAGE=0
 if [ -z "$APK_PATH" ]; then
+  # 버전 정렬: "dobedub-kiosk-v2.5.10.apk" 가 "v2.5.9" 보다 뒤에 오도록 숫자 필드로 정렬
+  pkg_apk="$(find "$SCRIPT_DIR" -maxdepth 1 -name 'dobedub-kiosk-*.apk' 2>/dev/null |
+             sed -E 's#^(.*/dobedub-kiosk-v?([0-9.]*).*)$#\2\t\1#' |
+             sort -t. -k1,1n -k2,2n -k3,3n | tail -1 | cut -f2)"
   rel_apk="$SCRIPT_DIR/app/build/outputs/apk/release/app-release.apk"
   dbg_apk="$SCRIPT_DIR/app/build/outputs/apk/debug/app-debug.apk"
-  if [ -f "$rel_apk" ]; then
+  if [ -n "$pkg_apk" ] && [ -f "$pkg_apk" ]; then
+    APK_PATH="$pkg_apk"
+    APK_FROM_PACKAGE=1
+  elif [ -f "$rel_apk" ]; then
     APK_PATH="$rel_apk"
   elif [ -f "$dbg_apk" ]; then
     APK_PATH="$dbg_apk"
@@ -341,14 +357,21 @@ if [ -z "$APK_PATH" ]; then
     warn "운영 납품 시에는 './gradlew assembleRelease'(키스토어 보유 PC)로 만든 릴리스 APK를 사용하세요."
   fi
 fi
-[ -n "$APK_PATH" ] && [ -f "$APK_PATH" ] || die "APK 를 찾을 수 없습니다.
-       먼저 빌드하세요:  ./gradlew assembleRelease  (또는 assembleDebug)"
+[ -n "$APK_PATH" ] && [ -f "$APK_PATH" ] || die "설치할 APK 를 찾을 수 없습니다.
+       운영 패키지라면: dobedub-kiosk-v*.apk 파일이 태블릿-세팅.command 와 같은 폴더에 있어야 합니다.
+         (찾은 위치: $SCRIPT_DIR — 파일이 지워졌거나 이름이 바뀌지 않았는지 확인)
+       개발 PC 라면: ./gradlew assembleRelease 로 빌드하세요 (app/build/outputs/apk/release/app-release.apk)."
 
 apk_mtime="$(file_mtime "$APK_PATH")"
-info "설치: $(basename "$APK_PATH")  (빌드시각 $(fmt_time "$apk_mtime"))"
-age_h=$(( ( $(date +%s) - apk_mtime ) / 3600 ))
-if [ "$age_h" -gt 12 ]; then
-  warn "이 APK는 ${age_h}시간 전에 빌드됐습니다. 최신 코드가 맞는지 확인하세요(필요시 재빌드)."
+if [ "$APK_FROM_PACKAGE" -eq 1 ]; then
+  info "설치: $(basename "$APK_PATH")  (운영 패키지 동봉 APK)"
+else
+  info "설치: $(basename "$APK_PATH")  (빌드시각 $(fmt_time "$apk_mtime"))"
+  # 빌드 산출물을 직접 쓰는 개발 PC 에서만 의미 있는 경고. 패키지 APK 는 항상 오래됐으므로 내지 않는다.
+  age_h=$(( ( $(date +%s) - apk_mtime ) / 3600 ))
+  if [ "$age_h" -gt 12 ]; then
+    warn "이 APK는 ${age_h}시간 전에 빌드됐습니다. 최신 코드가 맞는지 확인하세요(필요시 재빌드)."
+  fi
 fi
 
 adb_run install -r "$APK_PATH"
