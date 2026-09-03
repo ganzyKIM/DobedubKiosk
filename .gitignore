@@ -27,3 +27,6 @@ server/data/
 # 유출 시 대시보드(Settings > Setup Keys)에서 revoke 하고 새 키로 교체할 것.
 netbird-setup-key.txt
 
+
+# 운영 패키지 조립 산출물(make-package.sh)
+dist/

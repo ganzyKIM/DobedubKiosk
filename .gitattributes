@@ -9,6 +9,7 @@
 *.sh        text eol=lf
 *.command   text eol=lf
 gradlew     text eol=lf
+make-package.sh text eol=lf
 
 # 손대면 안 되는 이진 파일
 *.apk  binary

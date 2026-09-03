@@ -213,6 +213,7 @@ export PATH="$ANDROID_HOME/platform-tools:$PATH"
 | 하는 일 | 윈도우 | 맥 |
 |---|---|---|
 | 태블릿 원클릭 세팅 | `태블릿-세팅.bat` → `setup-tablet.ps1` | `태블릿-세팅.command` → `setup-tablet.sh` |
+| 운영 패키지 zip 조립 | (윈도우판 없음 — 맥에서 만들어 전달) | `make-package.sh --apk <release apk>` |
 | 함대 서버 실행 | `관리자-실행.bat` → `start-admin.ps1` | `관리자-실행.command` → `start-admin.sh` |
 | 함대 서버 종료 | `관리자-종료.bat` | `관리자-종료.command` (`./start-admin.sh --stop`) |
 | 공인 HTTPS 터널 | `server/start-tunnel.ps1` | `server/start-tunnel.sh` |
